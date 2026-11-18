@@ -1,0 +1,70 @@
+[project]
+name = "data-agent"
+version = "0.1.0"
+description = "Deep Agents + Chainlit で作る、社内のデータを調べて分析するエージェント"
+readme = "README.md"
+authors = [
+    { name = "DP-Koji-Tsuchida", email = "tsuchida@digitalplatformer.co.jp" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "asyncpg>=0.32.0",
+    "chainlit>=2.12.0",
+    "cronsim>=2.8",
+    "deepagents>=0.7.32",
+    "httpx>=0.28.1",
+    "langchain>=1.4",
+    "langchain-anthropic>=1.7.6",
+    "langchain-mcp-adapters>=0.3.2",
+    "langfuse>=4,<5",
+    "langgraph>=1.2.18",
+    "langgraph-checkpoint-postgres>=3.2.0",
+    "psycopg[binary,pool]>=3.3.8",
+    "pydantic>=2.14.1",
+    "pydantic-settings>=2.16.1",
+    "python-dotenv>=1.2.4",
+    "pyyaml>=6.0.3",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.6,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.17.4",
+]
+
+# 書き方の点検（Linter）と整形（Formatter）。どちらも Ruff（無料、手元で動く）。
+#   uv run ruff check .        点検（--fix で直せるものを直す）
+#   uv run ruff format .       整形
+[tool.ruff]
+line-length = 130          # いまのコードに合わせた幅。整形で、これより長い式は折り返す
+target-version = "py312"
+extend-exclude = ["workspace", "memories", "skills", "logs", "private", "data"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F",  # 基本の誤り（未使用の import、未定義の名前など）
+    "I",            # import の並び
+    "B",            # 誤りのもとになりやすい書き方
+    "UP",           # 古い書き方を、Python 3.12 の書き方に
+    "SIM", "C4", "PIE", "RET", "PERF",  # 短く、読みやすく書ける所
+    "C90",          # 複雑すぎる関数（分岐が多いもの）
+    "S",            # セキュリティ（bandit と同じ点検）
+    "RUF",          # Ruff 独自の点検
+]
+ignore = [
+    "RUF001", "RUF002", "RUF003",  # 日本語の全角の記号（（）、：など）は、わざと使っている
+    "E501",                        # 長い行は整形に任せる（日本語の文は、途中で折らない）
+    "PERF401",                     # 入れ子の for と if は、内包表記にしないほうが読みやすい
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.per-file-ignores]
+# テストでは assert を使い、偽の鍵や、手元に立てたサーバーへの http を使う
+# 偽のモデルなどの、テストの間だけ共有する入れ物（クラスの属性のリスト）も使う
+"tests/**" = ["S101", "S105", "S106", "S107", "S108", "S310", "S311", "S608", "RUF012"]

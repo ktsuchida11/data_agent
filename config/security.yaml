@@ -1,0 +1,120 @@
+# セキュリティ設定（エージェント自身は書き換えられない場所に置く）
+# フェーズが進むごとに項目を追加していく。
+
+limits:
+  max_input_chars: 20000        # 1回のユーザー入力の上限
+  # 下の2つは、サブエージェントの分と、承認のあとの続きも、同じ1回の依頼として数える
+  max_model_calls_per_run: 60   # 1回の依頼でモデルを呼べる回数
+  max_tool_calls_per_run: 120   # 1回の依頼でツールを呼べる回数
+
+# 確認（承認）。エージェントが操作を実行する前に、画面で「実行してよいですか？」と確かめる。
+# ファイルの削除と、メモリ（/memories/）への書き込みは、ここの設定にかかわらず、必ず確かめる。
+approvals:
+  # 新しいチャットの確認のしかた
+  #   standard: 削除・メモリへの書き込みと、下の各ツールで require_approval: true としたもの、
+#             auto としたもので怪しいもの（いまは Web 検索）だけ確かめる
+  #   strict  : 加えて、ファイルの作成と書き換え・コードの実行・データベースの問い合わせ・Web 検索も確かめる
+  default_mode: standard
+  allow_mode_change: true   # 利用者が、画面の設定欄でチャットごとに切り替えられるようにする（false なら default_mode に固定）
+  allow_remember: true      # 確認のボタンに「このチャットでは以後確認しない」を出す（削除とメモリへの書き込みには出さない）
+  timeout_seconds: 600      # 答えを待つ時間（秒）。過ぎたら、実行しない
+# 定時実行は無人なので、確認が必要な操作は、自動で拒否される。
+
+# コードの実行（Python のコードを、隔離した別のコンテナで動かす）。
+# 実行する環境は、インターネットにも、作業フォルダにもつながっていない（compose.yaml の sandbox）。
+code_execution:
+  enabled: true
+  require_approval: false   # true にすると、どのチャットでも、実行のたびに確かめる（定時実行では、コードを実行できなくなる）
+  timeout_seconds: 60       # 1回の実行の時間（秒）
+  max_timeout_seconds: 300  # モデルが延ばせる上限（秒）
+  max_input_files: 10       # 1回の実行に渡せるファイルの数
+  max_input_mb: 20          # 1回の実行に渡せるファイルの合計
+  output_dir: /outputs      # コードが作ったファイルの保存先（作業フォルダの中）
+
+# データベース（PostgreSQL）からデータを読むツール。接続先は .env の DATA_DB_* で決める（未設定なら使えない）。
+# 読み取りだけを許したロールでつなぐこと（scripts/setup_data_db.sh）。管理者のロールでは受け付けない。
+# 個人情報の列は、データベースの側で読めなくする（config/hidden_columns.<データベース名>.txt に書く）。
+database:
+  enabled: true
+  require_approval: false        # true にすると、どのチャットでも、問い合わせのたびに確かめる（定時実行では使えなくなる）
+  statement_timeout_seconds: 30  # 1回の問い合わせの時間（秒）
+  max_rows: 10000                # 1回の問い合わせで受け取る行数の上限
+  max_csv_mb: 10                 # 1回の問い合わせで保存する CSV の大きさの上限
+  preview_rows: 30               # モデルに見せる行数（全体は CSV に保存する）
+  output_dir: /outputs           # 結果の CSV の保存先（作業フォルダの中）
+
+# Web 検索（Claude API の Web 検索ツール）。検索 1,000 回あたり 10 ドルと、検索する役のモデルの利用料がかかる。
+# 1回の依頼での検索は、最大で max_uses × max_calls_per_run 回（サブエージェントが検索した分も含む）。
+web_search:
+  enabled: true
+  # 検索の前の確認（ADR-0022）
+  #   auto : 質問文を調べて、外に出したくない情報らしいものがあるときだけ、質問文を画面に出して確かめる。
+  #          見るのは、このチャットで読んだファイル・データベースの結果などの写し（番号やコード、表の値、長い文）で、
+  #          利用者が自分で書いていないものと、下の「見張る言葉」の一覧にある言葉。
+  #          定時実行では、確かめる人がいないので、怪しい検索だけを自動で拒否する。
+  #   true : 検索のたびに確かめる（定時実行では、Web 検索を使えない）
+  #   false: 確かめない
+  require_approval: auto
+  # 見張る言葉（顧客の名前など）の一覧。1行に1つ。# で始まる行は説明。ファイルがなければ使わない。
+  # 書き方は private/watch_terms.example.txt。エージェントから読める場所（workspace/ など）には置けない
+  watch_terms_file: private/watch_terms.txt
+  # 見張る言葉を、データベースの列（顧客の名前など）からも読む。.env に DATA_DB_SCREENER_USER があるときだけ。
+  # 読む列は config/watch_columns.<データベース名>.txt に書き、scripts/setup_data_db.sh を実行する
+  # （その列だけを読めるロールを作る。エージェントのツールは、このロールを使わない）
+  watch_terms_refresh_minutes: 10  # 読み直す間隔（分）
+  watch_terms_max: 100000          # 読む値の数の上限。超えたら、どの検索も確かめる
+  max_uses: 5               # 1回の呼び出しの中で行う検索の回数の上限
+  max_calls_per_run: 5      # 1回の依頼で、検索のツールを呼べる回数（サブエージェントの分も含む）
+  max_question_chars: 1000  # 検索の依頼文の長さの上限
+  max_output_chars: 8000    # モデルに返す、検索結果のまとめの長さの上限
+  allowed_domains: []       # 書くと、このドメインだけを検索する（例: [go.jp, e-stat.go.jp]）
+  blocked_domains: []       # 書くと、このドメインを検索結果から外す（allowed_domains とは同時に使えない）
+
+# 定時実行（指定した日時に、依頼文を無人で実行する）の上限
+schedules:
+  max_per_user: 20          # 1人が登録できる予定の数
+  min_interval_minutes: 5   # 実行の間隔の下限（分）
+
+# 繰り返している作業を見つけて、スキル（手順書）の下書きを作る機能。
+# 検出と下書きは自動で行い、登録するときは必ず利用者が承認する。
+skill_mining:
+  enabled: true
+  min_requests: 5         # 依頼の記録がこの数に達するまでは調べない
+  min_new_requests: 5     # 前回調べたあとに、これだけ依頼が増えたら調べ直す
+  min_hours_between: 24   # 自動で調べる間隔の下限（時間）
+  min_occurrences: 3      # 何回繰り返されていたら、スキルの候補にするか
+  lookback_days: 60       # 何日前までの依頼を調べるか
+  max_requests: 200       # 一度に調べる依頼の数の上限
+  max_pending: 3          # 承認待ちの提案の数の上限
+
+# 返事の数と URL を、根拠（読んだファイル・データベース・Web 検索・コードの実行の結果と、利用者の発言）と照合する（ADR-0026）。
+# 根拠で確かめられない数や URL があれば、返事の下に注記を出す。返事は止めない。照合の規則は、誤情報の点検と同じ。
+grounding:
+  enabled: true
+  # 照合するのは、データを読んだ回の返事だけ（コードの相談で出る、ポート番号などで注記が出ないように）
+  tools: [query_database, web_search, run_python]   # このツールを使った回
+  file_suffixes: [.csv, .tsv, .json, .jsonl, .txt, .md, .log]   # この拡張子のファイルを読んだ回
+  max_items: 10   # 注記に並べる数と URL の上限
+
+# Langfuse に送った記録（モデルとのやりとりとツールの呼び出し）を残す日数（ADR-0031）。
+# アプリが 1 日に 1 回、これより古い記録を消す。消すのは、このアプリが送った記録だけ。0 にすると消さない。
+tracing:
+  retention_days: 90
+
+# ガードレール。形が決まっている情報を見つけて、モデルや保存先に流れないようにする。
+# 守る場所は、利用者の入力・ツールの結果（読んだファイルなど）・モデルの返事の3つ。
+guardrails:
+  enabled: true
+  # 種類ごとの扱い
+  #   mask: 「[マスク済み:種類]」に置き換える
+  #   log : 置き換えずに、見つけたことだけを監査ログに記録する
+  #   off : 何もしない
+  actions:
+    secret: mask        # API キー、トークン、秘密鍵。含む内容のファイルへの書き込みも拒否する
+    credit_card: mask   # クレジットカード番号
+    my_number: mask     # マイナンバー
+    email: mask         # メールアドレス
+    phone: mask         # 電話番号（全角や、かっこ・空白で区切ったものも含む）
+    bank_account: mask  # 口座番号（「口座」「普通」などの言葉に続く、7桁の数字）
+# 氏名や住所のように、形が決まっていないものは見つけられない。データベースの個人情報は、
+# 列ごとに読めなくして守る（scripts/setup_data_db.sh と、config/hidden_columns.<データベース名>.txt）。

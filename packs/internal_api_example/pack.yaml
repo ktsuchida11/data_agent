@@ -1,0 +1,35 @@
+# 用途パックの見本「社内 API」（ADR-0032、ADR-0033。チュートリアル: docs/tutorials/04-mcp.md、05-python-tool.md）。
+# 社内の受注システム（の見本。examples/internal_api/server.py）を、HTTPS でつないで調べるエージェント。
+# 使うときは、.env に AGENT_PACK=internal_api_example と EXAMPLE_API_TOKEN=<鍵> を書いて、作り直す。
+
+title: 受注照会エージェント（見本）
+greeting: 受注照会エージェント（見本）です。社内の受注システムを調べて答えます。データはすべて架空のものです。
+
+prompt: SYSTEM.md
+
+# 組み込みのツールは、コードの実行だけを使う（データベースと Web 検索は使わない）
+builtin_tools: [run_python]
+
+# 自分で書いた Python のツール（このフォルダの tools.py。税込みの金額の計算）
+python_tools: [tools.py]
+
+mcp_servers:
+  orders:                          # ツールの名前は「orders__ツールの名前」になる
+    url: https://internal-api-example:8443/mcp
+    headers:
+      Authorization: Bearer ${EXAMPLE_API_TOKEN}   # 鍵は .env に書く。ここには書かない
+    ca_file: private/example-ca/ca.crt             # 社内の認証局の証明書（見本のサーバーが書き出す）
+    timeout_seconds: 30
+    tools:                         # 使うツールだけを書く。サーバーにある delete_order は書かないので、使えない
+      search_orders:
+        label: 受注の検索
+        require_approval: false    # 読むだけなので、確かめない
+        grounding: true            # 返事の数の照合で、根拠のデータとして扱う
+      get_order:
+        label: 受注の詳細
+        require_approval: false
+        grounding: true
+      update_order_status:
+        label: 受注の状態の変更
+        require_approval: true     # 書き換えるので、毎回確かめる
+        max_calls_per_run: 3

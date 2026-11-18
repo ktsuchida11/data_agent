@@ -1,0 +1,903 @@
+<title>data_agent 仕組みの地図</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: 1 本の縦の流れ。各節は「図 → ひとことの説明」。図は横に長いので、狭い画面では図だけ横に送れる */
+:root {
+  --bg: #f2f5f4;
+  --surface: #ffffff;
+  --surface-2: #e7edeb;
+  --ink: #15201c;
+  --muted: #55625d;
+  --line: #c4cfca;
+  --app: #0b6a64;
+  --app-soft: #d8eeeb;
+  --guard: #946400;
+  --guard-soft: #f5ead0;
+  --block: #b3261e;
+  --block-soft: #fae3df;
+  --font-display: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", sans-serif;
+  --font-body: "Noto Sans JP", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1311; --surface: #141c19; --surface-2: #1b2622; --ink: #e3eae7; --muted: #9baba5;
+    --line: #2f3c37; --app: #5cc4bb; --app-soft: #15302d; --guard: #e3b44f; --guard-soft: #322811;
+    --block: #f2836f; --block-soft: #3a1d18; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1311; --surface: #141c19; --surface-2: #1b2622; --ink: #e3eae7; --muted: #9baba5;
+  --line: #2f3c37; --app: #5cc4bb; --app-soft: #15302d; --guard: #e3b44f; --guard-soft: #322811;
+  --block: #f2836f; --block-soft: #3a1d18; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.75;
+}
+.page {
+  max-width: 980px;
+  margin: 0 auto;
+  padding-block: 40px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid;
+  gap: 56px;
+}
+h1, h2 { font-family: var(--font-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(28px, 4.2vw, 40px); line-height: 1.25; font-weight: 700; letter-spacing: 0.01em; }
+h2 { font-size: 22px; line-height: 1.4; font-weight: 700; }
+p { margin: 0; max-width: 66ch; }
+code, .mono { font-family: var(--font-mono); font-size: 0.88em; }
+.eyebrow { font-size: 12px; letter-spacing: 0.08em; color: var(--muted); font-weight: 500; }
+
+header { display: grid; gap: 18px; }
+.lead { font-size: 16px; color: var(--ink); }
+.where { display: flex; flex-wrap: wrap; gap: 10px; }
+.where div {
+  display: grid; gap: 2px; padding: 10px 14px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--surface); min-width: 0;
+}
+.where div.running { border-color: var(--app); background: var(--app-soft); }
+.where b { font-family: var(--font-mono); font-size: 14px; font-weight: 600; }
+.where span { font-size: 13px; color: var(--muted); }
+.where .state { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; color: var(--muted); }
+.where .running .state { color: var(--app); }
+
+nav ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 14px; }
+nav a { color: var(--app); text-decoration: none; border-bottom: 1px solid transparent; }
+nav a:hover, nav a:focus-visible { border-bottom-color: var(--app); }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--app); outline-offset: 2px; }
+
+section { display: grid; gap: 16px; scroll-margin-top: 16px; }
+section > header { gap: 6px; }
+figure { margin: 0; display: grid; gap: 10px; }
+.fig-scroll {
+  overflow-x: auto; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 12px; padding: 14px;
+}
+.fig-scroll svg { display: block; width: 100%; min-width: 760px; height: auto; }
+figcaption { font-size: 13.5px; color: var(--muted); max-width: 70ch; }
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.notes p { font-size: 14px; color: var(--muted); }
+.notes b { color: var(--ink); font-weight: 700; }
+.key { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--muted); }
+.key span { display: inline-flex; align-items: center; gap: 6px; }
+.swatch { width: 22px; height: 0; border-top: 2px solid var(--ink); display: inline-block; }
+.swatch.blocked { border-top: 2px dashed var(--block); }
+.swatch.guard { border-top: 2px dashed var(--guard); }
+
+/* SVG の中身（ページの色の値を使う） */
+.box { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; }
+.box.app { fill: var(--app-soft); stroke: var(--app); stroke-width: 2; }
+.box.ext { fill: var(--surface-2); }
+.box.db { fill: var(--surface-2); }
+.box.guardbox { fill: var(--guard-soft); stroke: var(--guard); stroke-width: 1; }
+.box.blockbox { fill: var(--block-soft); stroke: var(--block); stroke-width: 1.2; }
+.region { fill: none; stroke: var(--muted); stroke-width: 1.2; }
+.enclosure { fill: none; stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 6 4; }
+.group { fill: none; stroke: var(--line); stroke-width: 1.2; }
+.wire { fill: none; stroke: var(--ink); stroke-width: 1.6; }
+.wire.guard { stroke: var(--guard); stroke-dasharray: 4 3; stroke-width: 1.4; }
+.wire.blocked { stroke: var(--block); stroke-dasharray: 4 3; }
+.cross { stroke: var(--block); stroke-width: 2.4; stroke-linecap: round; }
+.head { fill: var(--ink); }
+.head.guard { fill: var(--guard); }
+.diamond { fill: var(--guard); }
+.t { font-family: var(--font-body); font-size: 12.5px; fill: var(--ink); }
+.t.strong { font-weight: 700; font-size: 14px; }
+.t.small { font-size: 12px; fill: var(--muted); }
+.t.mono { font-family: var(--font-mono); font-size: 11.5px; }
+.t.mono.strong { font-size: 13px; font-weight: 600; }
+.t.label { font-family: var(--font-display); font-weight: 700; font-size: 13px; fill: var(--muted); letter-spacing: 0.02em; }
+.t.note { font-size: 11.5px; fill: var(--muted); }
+.t.edge { font-size: 12px; fill: var(--ink); }
+.t.block { fill: var(--block); font-weight: 500; font-size: 12px; }
+.t.app { fill: var(--app); }
+.t.colhead { font-family: var(--font-display); font-weight: 700; font-size: 13px; fill: var(--muted); letter-spacing: 0.04em; }
+.lifeline { stroke: var(--line); stroke-width: 1.4; stroke-dasharray: 3 4; }
+.activation { fill: var(--app-soft); stroke: var(--app); stroke-width: 1.2; }
+h3 { font-family: var(--font-display); font-size: 17px; line-height: 1.5; font-weight: 700; margin: 0; text-wrap: balance; }
+.subhead { display: grid; gap: 8px; margin-top: 12px; }
+.terms td:first-child { width: 24%; }
+.terms td { font-size: 13.5px; }
+.terms td b { font-weight: 700; }
+.howto { display: grid; gap: 12px; }
+.example {
+  margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line);
+  font-family: var(--font-mono); font-size: 13px; line-height: 1.6; overflow-x: auto;
+}
+.cron td:first-child { width: 30%; white-space: nowrap; }
+
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.table-scroll { overflow-x: auto; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-family: var(--font-display); font-weight: 700; font-size: 13px; color: var(--muted); letter-spacing: 0.04em; }
+td:first-child { width: 38%; }
+
+.commands { display: grid; gap: 12px; }
+.cmd { display: grid; gap: 6px; min-width: 0; }
+.cmd .label { font-size: 13.5px; color: var(--muted); }
+.cmd .label b { color: var(--ink); }
+.cmd .fee { font-size: 11.5px; font-weight: 700; letter-spacing: 0.05em; padding: 1px 8px; border-radius: 999px; margin-left: 6px; }
+.fee.free { color: var(--app); background: var(--app-soft); }
+.fee.paid { color: var(--block); background: var(--block-soft); }
+.cmd .row { display: flex; gap: 8px; align-items: stretch; min-width: 0; }
+.cmd pre {
+  margin: 0; flex: 1; min-width: 0; overflow-x: auto; padding: 10px 12px; border-radius: 8px;
+  background: var(--surface); border: 1px solid var(--line); font-family: var(--font-mono); font-size: 13px; line-height: 1.6;
+}
+.cmd button {
+  font: 500 13px var(--font-body); color: var(--ink); background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: 8px; padding: 0 14px; cursor: pointer; white-space: nowrap;
+}
+.cmd button:hover { border-color: var(--app); }
+footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 18px; display: grid; gap: 6px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  nav a { transition: border-color 0.15s ease; }
+}
+</style>
+
+<div class="page">
+  <header>
+    <div class="eyebrow">LangChain / data_agent（2026-11-16 に coding_agent から名前を変えた）</div>
+    <h1>data_agent 仕組みの地図</h1>
+    <p class="lead">社内のデータ（ファイルやデータベース）を、Claude が調べて分析し、まとめるチャットアプリ「データ分析エージェント」です。集計や表・グラフ作りのためにコードも実行し、Web も検索します。このページは、何が動いていて、1 回の依頼がどこを通るかを、図で示します。別の用途のエージェントの土台にもなります（用途パック。2026-11-17）。</p>
+    <div class="where" aria-label="LangChain フォルダの中身">
+      <div class="running"><span class="state">動いている</span><b>data_agent/</b><span>データ分析エージェント。毎日使うチャット（127.0.0.1:8000）</span></div>
+      <div><span class="state">保管だけ</span><b>archive/</b><span>顧客ニーズ調査エージェントの叩き台と設計書。一度も動かしていない</span></div>
+      <div><span class="state">資料</span><b>01_…md・文字起こし/・要約/</b><span>Deep Agents を調べたときの資料</span></div>
+    </div>
+    <nav aria-label="このページの節">
+      <ul>
+        <li><a href="#running">動いているもの</a></li>
+        <li><a href="#request">1 回の依頼の流れ</a></li>
+        <li><a href="#schedule">定時実行</a></li>
+        <li><a href="#skills">スキル</a></li>
+        <li><a href="#packs">用途パック</a></li>
+        <li><a href="#folders">フォルダの関係</a></li>
+        <li><a href="#lookup">どこを見るか</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <!-- 1. 動いているもの -->
+  <section id="running">
+    <header>
+      <div class="eyebrow">コンテナのつながり</div>
+      <h2>動いているもの</h2>
+    </header>
+    <figure>
+      <div class="fig-scroll">
+        <svg viewBox="0 0 880 600" role="img" aria-label="ブラウザはアプリのコンテナにつながる。アプリは Anthropic API、コードを実行する sandbox、Langfuse の PostgreSQL と画面、用途パックで決めた社内の API（HTTPS）につながる。sandbox は閉じたネットワークにいて、インターネットにもデータベースにも届かない。">
+          <defs>
+            <marker id="ah1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+          <!-- インターネットの先 -->
+          <rect class="box ext" x="230" y="12" width="230" height="68" rx="10"/>
+          <text class="t strong" x="345" y="40" text-anchor="middle">Anthropic API</text>
+          <text class="t small" x="345" y="62" text-anchor="middle">Claude が返事を作る・Web 検索</text>
+          <text class="t note" x="472" y="34">インターネットの先</text>
+
+          <!-- Docker -->
+          <rect class="region" x="168" y="104" width="700" height="484" rx="16"/>
+          <text class="t label" x="184" y="130">Docker（この Mac）</text>
+
+          <!-- ブラウザ -->
+          <rect class="box" x="4" y="206" width="116" height="60" rx="10"/>
+          <text class="t strong" x="62" y="232" text-anchor="middle">あなたの</text>
+          <text class="t strong" x="62" y="252" text-anchor="middle">ブラウザ</text>
+          <text class="t mono" x="62" y="288" text-anchor="middle" style="fill: var(--muted)">127.0.0.1:8000</text>
+          <line class="wire" x1="120" y1="236" x2="226" y2="236" marker-end="url(#ah1)"/>
+
+          <!-- 社内の API（用途パックでつなぐと決めたものだけ） -->
+          <text class="t note" x="4" y="322">社内のネットワーク</text>
+          <rect class="box ext" x="4" y="330" width="150" height="84" rx="10"/>
+          <text class="t strong" x="79" y="356" text-anchor="middle">社内の API</text>
+          <text class="t small" x="79" y="378" text-anchor="middle">MCP（HTTPS）</text>
+          <text class="t small" x="79" y="398" text-anchor="middle">HTTPS・鍵・認証局</text>
+          <path class="wire" d="M228,286 H186 V372 H158" marker-end="url(#ah1)"/>
+          <text class="t edge" x="79" y="434" text-anchor="middle">パックで決めたものだけ</text>
+
+          <!-- アプリ -->
+          <rect class="box app" x="230" y="180" width="230" height="112" rx="12"/>
+          <text class="t mono strong t app" x="345" y="210" text-anchor="middle">data-agent</text>
+          <text class="t small" x="345" y="232" text-anchor="middle">アプリのコンテナ</text>
+          <text class="t" x="345" y="254" text-anchor="middle">画面・エージェント</text>
+          <text class="t" x="345" y="274" text-anchor="middle">定時実行の見張り（30 秒ごと）</text>
+
+          <!-- アプリ ⇄ Anthropic -->
+          <line class="wire" x1="345" y1="178" x2="345" y2="84" marker-start="url(#ah1)" marker-end="url(#ah1)"/>
+          <text class="t edge" x="356" y="122">依頼と道具の一覧を送り、</text>
+          <text class="t edge" x="356" y="140">返事を受け取る</text>
+
+          <!-- sandbox -->
+          <rect class="enclosure" x="196" y="360" width="278" height="208" rx="12"/>
+          <text class="t label" x="212" y="384">閉じたネットワーク</text>
+          <text class="t note" x="212" y="402">アプリとだけつながる</text>
+          <rect class="box" x="250" y="420" width="190" height="74" rx="10"/>
+          <text class="t mono strong" x="345" y="451" text-anchor="middle">sandbox</text>
+          <text class="t small" x="345" y="473" text-anchor="middle">コードを実行する箱</text>
+          <line class="wire" x1="345" y1="294" x2="345" y2="416" marker-start="url(#ah1)" marker-end="url(#ah1)"/>
+          <text class="t edge" x="356" y="324">コードとファイルを渡し、</text>
+          <text class="t edge" x="356" y="342">結果を受け取る</text>
+          <line class="wire blocked" x1="440" y1="457" x2="474" y2="457"/>
+          <line class="cross" x1="478" y1="451" x2="490" y2="463"/>
+          <line class="cross" x1="490" y1="451" x2="478" y2="463"/>
+          <text class="t block" x="345" y="528" text-anchor="middle">✕ インターネットに出られない</text>
+          <text class="t block" x="345" y="550" text-anchor="middle">✕ データベースに届かない</text>
+
+          <!-- Langfuse のコンテナ群 -->
+          <rect class="group" x="600" y="150" width="250" height="390" rx="12"/>
+          <text class="t label" x="616" y="174">Langfuse のコンテナ群</text>
+          <text class="t note" x="616" y="192">別の compose で起動</text>
+          <rect class="box" x="616" y="206" width="218" height="74" rx="10"/>
+          <text class="t strong" x="725" y="232" text-anchor="middle">Langfuse の画面</text>
+          <text class="t mono" x="725" y="252" text-anchor="middle" style="fill: var(--muted)">localhost:3000</text>
+          <text class="t small" x="725" y="270" text-anchor="middle">モデルとのやりとりの記録</text>
+          <rect class="box" x="616" y="298" width="218" height="226" rx="10"/>
+          <text class="t strong" x="725" y="322" text-anchor="middle">PostgreSQL</text>
+          <rect class="box db" x="630" y="336" width="190" height="70" rx="8"/>
+          <text class="t mono strong" x="725" y="362" text-anchor="middle">coding_agent</text>
+          <text class="t small" x="725" y="384" text-anchor="middle">会話・予定・依頼の記録</text>
+          <rect class="box db" x="630" y="418" width="190" height="92" rx="8"/>
+          <text class="t mono strong" x="725" y="444" text-anchor="middle">coding_agent_sample</text>
+          <text class="t small" x="725" y="466" text-anchor="middle">練習用のデータ</text>
+          <text class="t small" x="725" y="488" text-anchor="middle">エージェントは読むだけ</text>
+
+          <!-- アプリ → Langfuse・PostgreSQL -->
+          <path class="wire" d="M460,236 H612" marker-end="url(#ah1)"/>
+          <text class="t edge" x="537" y="226" text-anchor="middle">記録（マスク済み）</text>
+          <path class="wire" d="M460,258 H590 V371 H626" marker-end="url(#ah1)"/>
+          <text class="t edge" x="514" y="252" text-anchor="middle">会話を保存</text>
+          <path class="wire" d="M460,288 H575 V464 H626" marker-end="url(#ah1)"/>
+          <text class="t edge" x="508" y="280" text-anchor="middle">読むだけ</text>
+        </svg>
+      </div>
+      <div class="key"><span><i class="swatch"></i>つながる（矢印の向きにデータが流れる）</span><span><i class="swatch blocked"></i>つながらないようにしてある</span></div>
+      <figcaption>アプリのコンテナが中心です。Claude とは、インターネットの先の Anthropic API でやりとりします。コードは、外とつながらない箱（sandbox）の中で動きます。社内の API には、用途パックでつなぐと決めたものにだけ、HTTPS でつなぎます（データ分析のパックは、つながない）。</figcaption>
+    </figure>
+    <div class="notes">
+      <p><b>アプリが書き込める場所は限られています。</b>作業フォルダ（<code>workspace/</code>）・長期メモ（<code>memories/</code>）・手順書（<code>skills/</code>）と、一時フォルダだけです。</p>
+      <p><b>PostgreSQL は Langfuse のものを借りています。</b>手元だけの構成です。AWS に移すときは、別に用意します（ADR-0009）。</p>
+      <p><b>練習用のデータは、読むだけの権限で読みます。</b>メールアドレスや電話番号などの列は、データベースの側で読めなくしてあります。</p>
+      <p><b>社内の API には、起動のときにつなぎます。</b>鍵が違う、証明書を確かめられない、などでつながらなければ、理由を知らせて起動を止めます（ADR-0033）。手元で試すための見本（<code>internal-api-example</code>）は、<code>--profile example</code> のときだけ起動します。</p>
+    </div>
+  </section>
+
+  <!-- 2. 1 回の依頼の流れ -->
+  <section id="request">
+    <header>
+      <div class="eyebrow">依頼が通る順番</div>
+      <h2>1 回の依頼の流れ</h2>
+    </header>
+    <figure>
+      <div class="fig-scroll">
+        <svg viewBox="0 0 880 680" role="img" aria-label="依頼は、入口、考える、道具を使う、返事、照合、残す、の 6 段階を順に通る。道具を使う段階は、必要なだけ考える段階と行き来する。それぞれの段階に、守りが付いている。">
+          <defs>
+            <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+          <text class="t colhead" x="70" y="16">流れ</text>
+          <text class="t colhead" x="450" y="16">その段階で効く守り</text>
+
+          <!-- ① 入口 -->
+          <rect class="box" x="70" y="28" width="330" height="74" rx="10"/>
+          <text class="t strong" x="90" y="56">① 入口</text>
+          <text class="t" x="90" y="78">ブラウザから依頼が届く</text>
+          <text class="t mono" x="90" y="94" style="fill: var(--muted)">ui/app.py · ui/connection_guard.py</text>
+          <line class="wire guard" x1="400" y1="65" x2="448" y2="65"/>
+          <rect class="box guardbox" x="450" y="28" width="410" height="74" rx="10"/>
+          <rect class="diamond" x="468" y="44" width="7" height="7" transform="rotate(45 471.5 47.5)"/>
+          <text class="t" x="484" y="52">ログインの確認</text>
+          <rect class="diamond" x="468" y="64" width="7" height="7" transform="rotate(45 471.5 67.5)"/>
+          <text class="t" x="484" y="72">接続元の確認（別のサイトのページは断る）</text>
+          <rect class="diamond" x="468" y="84" width="7" height="7" transform="rotate(45 471.5 87.5)"/>
+          <text class="t" x="484" y="92">秘密らしい文字列をマスク</text>
+          <line class="wire" x1="235" y1="102" x2="235" y2="127" marker-end="url(#ah2)"/>
+
+          <!-- ② 考える -->
+          <rect class="box app" x="70" y="130" width="330" height="74" rx="10"/>
+          <text class="t strong" x="90" y="158">② 考える</text>
+          <text class="t" x="90" y="180">Claude に、依頼と道具の一覧を渡す</text>
+          <text class="t mono" x="90" y="196" style="fill: var(--muted)">agent.py · packs/&lt;名前&gt;/SYSTEM.md</text>
+          <line class="wire guard" x1="400" y1="167" x2="448" y2="167"/>
+          <rect class="box guardbox" x="450" y="130" width="410" height="74" rx="10"/>
+          <rect class="diamond" x="468" y="152" width="7" height="7" transform="rotate(45 471.5 155.5)"/>
+          <text class="t" x="484" y="160">見える範囲は作業フォルダだけ（.env や設定は見えない）</text>
+          <rect class="diamond" x="468" y="174" width="7" height="7" transform="rotate(45 471.5 177.5)"/>
+          <text class="t" x="484" y="182">手分け役（サブエージェント）にも、同じ守りを付ける</text>
+          <line class="wire" x1="235" y1="204" x2="235" y2="229" marker-end="url(#ah2)"/>
+
+          <!-- ③ 道具を使う -->
+          <rect class="box" x="70" y="232" width="330" height="124" rx="10"/>
+          <text class="t strong" x="90" y="260">③ 道具を使う</text>
+          <text class="t" x="90" y="282">Claude が道具を選んで使う</text>
+          <text class="t small" x="90" y="304">ファイル・コード・データベース・Web 検索・</text>
+          <text class="t small" x="90" y="322">パックの道具（Python・MCP）・手分け役</text>
+          <text class="t mono" x="90" y="344" style="fill: var(--muted)">tools/</text>
+          <line class="wire guard" x1="400" y1="294" x2="448" y2="294"/>
+          <rect class="box guardbox" x="450" y="232" width="410" height="124" rx="10"/>
+          <rect class="diamond" x="468" y="248" width="7" height="7" transform="rotate(45 471.5 251.5)"/>
+          <text class="t" x="484" y="256">回数の上限（止まらずに料金がかかるのを防ぐ）</text>
+          <rect class="diamond" x="468" y="268" width="7" height="7" transform="rotate(45 471.5 271.5)"/>
+          <text class="t" x="484" y="276">確認ボタン（削除・長期メモ・書き換える道具など）</text>
+          <rect class="diamond" x="468" y="288" width="7" height="7" transform="rotate(45 471.5 291.5)"/>
+          <text class="t" x="484" y="296">送る前に確かめる（検索の質問文、送る道具の引数）</text>
+          <rect class="diamond" x="468" y="308" width="7" height="7" transform="rotate(45 471.5 311.5)"/>
+          <text class="t" x="484" y="316">コードは、外とつながらない箱で動かす</text>
+          <rect class="diamond" x="468" y="328" width="7" height="7" transform="rotate(45 471.5 331.5)"/>
+          <text class="t" x="484" y="336">データベースは読むだけ</text>
+          <!-- ②と③の行き来 -->
+          <path class="wire" d="M70,294 H46 V167 H66" marker-end="url(#ah2)"/>
+          <text class="t edge" x="34" y="230" text-anchor="middle" transform="rotate(-90 34 230)">道具を使うたびに、くり返す</text>
+          <line class="wire" x1="235" y1="356" x2="235" y2="381" marker-end="url(#ah2)"/>
+
+          <!-- ④ 返事 -->
+          <rect class="box" x="70" y="384" width="330" height="74" rx="10"/>
+          <text class="t strong" x="90" y="412">④ 返事</text>
+          <text class="t" x="90" y="434">少しずつ画面に流す</text>
+          <text class="t mono" x="90" y="450" style="fill: var(--muted)">ui/app.py</text>
+          <line class="wire guard" x1="400" y1="421" x2="448" y2="421"/>
+          <rect class="box guardbox" x="450" y="384" width="410" height="74" rx="10"/>
+          <rect class="diamond" x="468" y="414" width="7" height="7" transform="rotate(45 471.5 417.5)"/>
+          <text class="t" x="484" y="422">返事のマスク（鍵・メールアドレス・電話番号）</text>
+          <line class="wire" x1="235" y1="458" x2="235" y2="483" marker-end="url(#ah2)"/>
+
+          <!-- ⑤ 照合 -->
+          <rect class="box" x="70" y="486" width="330" height="74" rx="10"/>
+          <text class="t strong" x="90" y="514">⑤ 照合</text>
+          <text class="t" x="90" y="536">返事の数と URL を、読んだものと照らし合わせる</text>
+          <text class="t mono" x="90" y="552" style="fill: var(--muted)">safety/grounding.py</text>
+          <line class="wire guard" x1="400" y1="523" x2="448" y2="523"/>
+          <rect class="box guardbox" x="450" y="486" width="410" height="74" rx="10"/>
+          <rect class="diamond" x="468" y="506" width="7" height="7" transform="rotate(45 471.5 509.5)"/>
+          <text class="t" x="484" y="514">確かめられない数と URL に、注記を付ける</text>
+          <rect class="diamond" x="468" y="526" width="7" height="7" transform="rotate(45 471.5 529.5)"/>
+          <text class="t" x="484" y="534">返事そのものは止めない</text>
+          <line class="wire" x1="235" y1="560" x2="235" y2="585" marker-end="url(#ah2)"/>
+
+          <!-- ⑥ 残す -->
+          <rect class="box" x="70" y="588" width="330" height="74" rx="10"/>
+          <text class="t strong" x="90" y="616">⑥ 残す</text>
+          <text class="t" x="90" y="638">会話・監査ログ・トレースを残す</text>
+          <text class="t mono" x="90" y="654" style="fill: var(--muted)">storage/ · safety/audit.py</text>
+          <line class="wire guard" x1="400" y1="625" x2="448" y2="625"/>
+          <rect class="box guardbox" x="450" y="588" width="410" height="74" rx="10"/>
+          <rect class="diamond" x="468" y="608" width="7" height="7" transform="rotate(45 471.5 611.5)"/>
+          <text class="t" x="484" y="616">Langfuse に送る記録も、送る前にマスク。90 日で消す</text>
+          <rect class="diamond" x="468" y="628" width="7" height="7" transform="rotate(45 471.5 631.5)"/>
+          <text class="t" x="484" y="636">監査ログには、会話の中身を残さない</text>
+        </svg>
+      </div>
+      <div class="key"><span><i class="swatch"></i>次の段階へ</span><span><i class="swatch guard"></i>その段階に付いている守り</span></div>
+      <figcaption>依頼は上から順に通ります。③の道具は 1 回とは限らず、Claude が「もう一度読む」「計算する」と決めるたびに②と行き来します。守りは、どの行き来にも毎回かかります。どの守りを、どの道具にかけるかは、道具の扱いで決まります（下の「用途パック」）。</figcaption>
+    </figure>
+  </section>
+
+  <!-- 3. 定時実行 -->
+  <section id="schedule">
+    <header>
+      <div class="eyebrow">画面がなくても動く</div>
+      <h2>定時実行の流れ</h2>
+    </header>
+    <div class="howto">
+      <h3>チャットからの使い方</h3>
+      <p>入力欄の <code>/</code> から「定時実行」を選び、「分 時 日 月 曜日」の 5 つと、依頼文を続けて送ります。内容を確かめるボタンが出るので、「登録する」を押すと予定になります。</p>
+      <pre class="example">0 9 * * 1 weekly-report のスキルで、先週の売上をまとめて</pre>
+      <p class="eyebrow">例です（毎週月曜の朝 9 時）。weekly-report は、登録したスキルの名前に置き換えます。</p>
+      <div class="table-scroll">
+        <table class="cron">
+          <thead><tr><th>時刻の書き方</th><th>意味（日本時間）</th></tr></thead>
+          <tbody>
+            <tr><td><code>0 9 * * 1-5</code></td><td>平日の朝 9 時</td></tr>
+            <tr><td><code>30 8 * * 1</code></td><td>毎週月曜の 8 時 30 分</td></tr>
+            <tr><td><code>0 18 1 * *</code></td><td>毎月 1 日の 18 時</td></tr>
+            <tr><td><code>*/30 * * * *</code></td><td>30 分ごと（間隔は 5 分以上）</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="notes">
+        <p><b>動くのは「依頼文」です。</b>決まったスキルやタスクを指定して動かす専用の仕組みではありません。時刻が来ると、登録した依頼文を、画面と同じエージェントにそのまま渡します。</p>
+        <p><b>スキルも使われます。</b>依頼文がスキルの説明に当てはまれば、エージェントはそのスキルの手順で進めます。確実に使わせたいときは、上の例のように、依頼文にスキルの名前を書きます。</p>
+        <p><b>ふつうの会話で頼んでも、予定は作られません。</b>エージェントには予定を作る道具を持たせていません。登録は、<code>/</code> の「定時実行」から、人がボタンを押したときだけです。言葉での登録（「毎朝 9 時に」）には、まだ対応していません。</p>
+      </div>
+    </div>
+    <figure>
+      <div class="fig-scroll">
+        <svg viewBox="0 0 880 232" role="img" aria-label="定時実行は、登録、見張り、無人での実行、結果を残す、の順に進む。無人なので、確認が必要な操作は自動で拒否される。">
+          <defs>
+            <marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+          <rect class="box" x="8" y="20" width="170" height="96" rx="10"/>
+          <text class="t strong" x="93" y="48" text-anchor="middle">① 登録する</text>
+          <text class="t" x="93" y="72" text-anchor="middle">/ の「定時実行」で</text>
+          <text class="t" x="93" y="92" text-anchor="middle">確認ボタンを押す</text>
+          <line class="wire" x1="178" y1="68" x2="237" y2="68" marker-end="url(#ah3)"/>
+          <text class="t edge" x="208" y="60" text-anchor="middle">予定</text>
+
+          <rect class="box" x="241" y="20" width="170" height="96" rx="10"/>
+          <text class="t strong" x="326" y="48" text-anchor="middle">② 見張る</text>
+          <text class="t" x="326" y="72" text-anchor="middle">30 秒ごとに</text>
+          <text class="t" x="326" y="92" text-anchor="middle">時刻を見る</text>
+          <line class="wire" x1="411" y1="68" x2="470" y2="68" marker-end="url(#ah3)"/>
+          <text class="t edge" x="441" y="60" text-anchor="middle">時刻が来た</text>
+
+          <rect class="box app" x="474" y="20" width="170" height="96" rx="10"/>
+          <text class="t strong" x="559" y="48" text-anchor="middle">③ 無人で実行</text>
+          <text class="t" x="559" y="72" text-anchor="middle">画面と同じ</text>
+          <text class="t" x="559" y="92" text-anchor="middle">エージェントが動く</text>
+          <line class="wire" x1="644" y1="68" x2="703" y2="68" marker-end="url(#ah3)"/>
+          <text class="t edge" x="674" y="60" text-anchor="middle">返事</text>
+
+          <rect class="box" x="707" y="20" width="170" height="96" rx="10"/>
+          <text class="t strong" x="792" y="48" text-anchor="middle">④ 結果を残す</text>
+          <text class="t" x="792" y="72" text-anchor="middle">「定時実行」グループ</text>
+          <text class="t" x="792" y="92" text-anchor="middle">のチャット（注記も）</text>
+
+          <line class="wire" x1="559" y1="116" x2="559" y2="156" marker-end="url(#ah3)"/>
+          <text class="t edge" x="569" y="141">確認が要る操作</text>
+          <rect class="box blockbox" x="440" y="160" width="238" height="60" rx="10"/>
+          <text class="t" x="559" y="185" text-anchor="middle" style="font-weight: 700; fill: var(--block)">自動で拒否する</text>
+          <text class="t small" x="559" y="207" text-anchor="middle">削除・長期メモ・怪しい Web 検索</text>
+        </svg>
+      </div>
+      <figcaption>予定は <code>features/schedules.py</code> が保存し、見張りと実行は <code>features/schedule_runner.py</code> が行います。その場で確かめる人がいないので、確認が必要な操作は自動で断ります。返事の照合と注記は、画面と同じ決まりで行います。</figcaption>
+    </figure>
+
+    <div class="subhead">
+      <h3>LangChain の中で起きていること</h3>
+      <p>定時実行は、画面と同じエージェントを、画面の代わりに「見張り」が動かします。エージェントは、LangChain の Deep Agents で組み立てた LangGraph のグラフです。上の図の③（無人で実行）の中では、次の順にやりとりします。</p>
+    </div>
+    <figure>
+      <div class="fig-scroll">
+        <svg viewBox="0 0 880 452" role="img" aria-label="見張りは、予定を確保し、結果のチャットを作り、astream でエージェントのグラフを動かす。グラフはモデルと道具を行き来し、状態をチェックポイントに保存する。確認が要る道具の前で止まると、見張りは Command(resume) で拒否を返して続けさせる。最後の返事をマスクして照合し、保存する。">
+          <defs>
+            <marker id="ah5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+          <!-- 登場する 3 つ -->
+          <rect class="box" x="20" y="12" width="220" height="52" rx="10"/>
+          <text class="t strong" x="130" y="35" text-anchor="middle">見張り</text>
+          <text class="t mono" x="130" y="54" text-anchor="middle" style="fill: var(--muted)">features/schedule_runner.py</text>
+          <rect class="box app" x="330" y="12" width="220" height="52" rx="10"/>
+          <text class="t strong" x="440" y="35" text-anchor="middle">エージェント</text>
+          <text class="t mono" x="440" y="54" text-anchor="middle" style="fill: var(--muted)">LangGraph のグラフ</text>
+          <rect class="box db" x="640" y="12" width="220" height="52" rx="10"/>
+          <text class="t strong" x="750" y="35" text-anchor="middle">PostgreSQL</text>
+          <text class="t small" x="750" y="54" text-anchor="middle">データベース coding_agent</text>
+          <!-- 時間の流れ（上から下へ） -->
+          <line class="lifeline" x1="130" y1="64" x2="130" y2="446"/>
+          <line class="lifeline" x1="440" y1="64" x2="440" y2="446"/>
+          <line class="lifeline" x1="750" y1="64" x2="750" y2="446"/>
+
+          <line class="wire" x1="130" y1="96" x2="746" y2="96" marker-end="url(#ah5)"/>
+          <text class="t edge" x="146" y="88">① 時刻が来た予定を確保する</text>
+          <line class="wire" x1="130" y1="134" x2="746" y2="134" marker-end="url(#ah5)"/>
+          <text class="t edge" x="146" y="126">② 結果のチャットを作る（新しい thread_id）</text>
+          <line class="wire" x1="130" y1="172" x2="428" y2="172" marker-end="url(#ah5)"/>
+          <text class="t edge" x="146" y="164">③ astream で、依頼を渡して動かす</text>
+
+          <rect class="activation" x="432" y="172" width="16" height="190"/>
+          <rect class="box ext" x="462" y="180" width="272" height="48" rx="8"/>
+          <text class="t" x="476" y="200">モデルを呼ぶ ⇄ 道具を動かす</text>
+          <text class="t small" x="476" y="219">返事が決まるまで行き来する（守りは毎回）</text>
+          <line class="wire" x1="448" y1="254" x2="746" y2="254" marker-end="url(#ah5)"/>
+          <text class="t edge" x="462" y="246">④ 状態を保存する（チェックポイント）</text>
+
+          <line class="wire" x1="432" y1="290" x2="134" y2="290" marker-end="url(#ah5)"/>
+          <text class="t edge" x="146" y="282">⑤ 確認が要る道具の前で止まる（interrupt）</text>
+          <line class="wire" x1="130" y1="326" x2="428" y2="326" marker-end="url(#ah5)"/>
+          <text class="t edge" x="146" y="318">⑥ Command(resume=拒否) で続けさせる</text>
+          <text class="t small" x="462" y="312">⑤⑥ は、止まるたびにくり返す（最大 10 回）</text>
+          <line class="wire" x1="432" y1="362" x2="134" y2="362" marker-end="url(#ah5)"/>
+          <text class="t edge" x="146" y="354">⑦ 最後の返事</text>
+
+          <rect class="activation" x="122" y="376" width="16" height="30"/>
+          <text class="t edge" x="146" y="396">⑧ マスクして、返事の数と URL を照合する（注記）</text>
+          <line class="wire" x1="130" y1="430" x2="746" y2="430" marker-end="url(#ah5)"/>
+          <text class="t edge" x="146" y="422">⑨ 返事を保存し、予定に結果を書く</text>
+        </svg>
+      </div>
+      <figcaption>縦の点線が時間の流れで、上から下へ進みます。予定の表、会話の状態（チェックポイント）、左の一覧のチャットは、どれも同じデータベース（名前は <code>coding_agent</code> のまま）に入っています。</figcaption>
+    </figure>
+
+    <div class="table-scroll">
+      <table class="terms">
+        <thead><tr><th>LangChain の部品</th><th>何をするか</th><th>定時実行での使い方</th></tr></thead>
+        <tbody>
+          <tr><td><b>Deep Agents</b><br><code>create_deep_agent</code></td><td>エージェントを組み立てる部品。道具・手分け役（サブエージェント）・長期メモ・手順書・ファイルの権限を、まとめて組み込む</td><td>画面と同じものを使う。モデルごとに 1 つ作って、使い回す（<code>agent.py</code>）</td></tr>
+          <tr><td><b>LangGraph のグラフ</b></td><td>エージェントの中身。「モデルを呼ぶ」と「道具を動かす」の 2 つの段を、返事が決まるまで行き来する</td><td>見張りが <code>astream</code> で動かし、途中経過（どの道具を呼び、何が返ったか）を受け取る。手分け役の分も集めて、照合の根拠にする</td></tr>
+          <tr><td><b>thread_id</b></td><td>会話の番号。会話の状態は、この番号ごとに保存される</td><td>実行のたびに新しく作る。それが「定時実行」グループのチャットになる</td></tr>
+          <tr><td><b>チェックポイント</b><br><code>AsyncPostgresSaver</code></td><td>グラフの状態を、段を進むたびにデータベースに保存する</td><td>結果のチャットを開くと、その状態から続きを話せる。止まったところからの再開にも使う</td></tr>
+          <tr><td><b>ミドルウェア</b></td><td>モデルを呼ぶ前後や、道具を動かす前に割り込む部品</td><td>守り（マスク、Web 検索の前の確認、回数の上限）は、画面のときと同じものが毎回かかる</td></tr>
+          <tr><td><b>確認待ち</b><br><code>HumanInTheLoopMiddleware</code>・<code>interrupt</code></td><td>確認が要る道具（削除、長期メモへの書き込み、怪しい Web 検索）の前で、グラフを止める</td><td>画面ではボタンを出す。定時実行では確かめる人がいないので、止まったら「拒否」を返す</td></tr>
+          <tr><td><b>再開の命令</b><br><code>Command(resume=…)</code></td><td>止まったグラフに答えを渡して、続きを動かす</td><td>拒否と、その理由（「定時実行では利用者が確認できないので、この操作は実行しませんでした」）を渡す</td></tr>
+          <tr><td><b>コールバック</b>（Langfuse）</td><td>グラフの中で起きたことを、外に記録する</td><td>記録に <code>scheduled</code> の印を付けて、画面の会話と分けて見られるようにする</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="notes">
+      <p><b>動かし方は 2 通りあります。</b>ふだんは、アプリの中の見張りが 30 秒ごとに時刻を見ます。外から 1 回だけ起動する形（<code>python -m data_agent.features.schedule_runner</code>）もあり、AWS では EventBridge がこれを時刻に起動する予定です（ADR-0006）。中身は同じです。</p>
+      <p><b>同じ回を二重に動かしません。</b>予定を確保するときに「次の実行時刻」を書き換え、書き換えられた 1 か所だけが実行します。止まっていた間に過ぎた回は、まとめて 1 回だけ実行します。</p>
+      <p><b>同時に動かすのは 2 つまでです。</b>時刻が重なった予定は、2 つずつ順に実行します。</p>
+    </div>
+  </section>
+
+  <!-- 3.5 スキル -->
+  <section id="skills">
+    <header>
+      <div class="eyebrow">手順書を増やす</div>
+      <h2>スキル（手順書）の足し方</h2>
+    </header>
+    <p>スキルは、「こういう作業のときは、この手順で進める」を書いた手順書です（<code>skills/&lt;名前&gt;/SKILL.md</code>）。エージェントは、依頼に当てはまるスキルだけを、必要なときに読みます。足し方は、チャットで頼む「スキル登録」、繰り返しから提案させる「スキル提案」、ファイルを置く方法の 3 通りです。どれも、手順書になるのは、人が中身を確かめてからです。</p>
+    <figure>
+      <div class="fig-scroll">
+        <svg viewBox="0 0 880 340" role="img" aria-label="スキルの下書きは、依頼の記録から繰り返しを探す道と、スキル登録でチャットから頼む道の 2 つでできる。どちらの下書きも中身を見せ、人が登録ボタンを押すと skills フォルダに書き出される。手でファイルを置いてもよい。skills フォルダのスキルは、新しいチャットと定時実行で使われる。エージェント自身は skills フォルダに書き込めない。">
+          <defs>
+            <marker id="ah6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+          <!-- 道 1: 繰り返しから（スキル提案） -->
+          <rect class="box" x="10" y="20" width="150" height="84" rx="10"/>
+          <text class="t strong" x="85" y="46" text-anchor="middle">依頼の記録</text>
+          <text class="t" x="85" y="68" text-anchor="middle">依頼のたびに残す</text>
+          <text class="t small" x="85" y="88" text-anchor="middle">（何を頼んだか）</text>
+          <line class="wire" x1="160" y1="62" x2="186" y2="62" marker-end="url(#ah6)"/>
+          <rect class="box" x="190" y="20" width="150" height="84" rx="10"/>
+          <text class="t strong" x="265" y="46" text-anchor="middle">繰り返しを探す</text>
+          <text class="t" x="265" y="68" text-anchor="middle">3 回以上の作業</text>
+          <text class="t small" x="265" y="88" text-anchor="middle">「スキル提案」</text>
+          <line class="wire" x1="340" y1="62" x2="366" y2="62" marker-end="url(#ah6)"/>
+
+          <!-- 道 2: チャットで頼む（スキル登録） -->
+          <rect class="box app" x="10" y="128" width="150" height="84" rx="10"/>
+          <text class="t strong" x="85" y="154" text-anchor="middle">チャットで頼む</text>
+          <text class="t" x="85" y="176" text-anchor="middle">/ の「スキル登録」</text>
+          <text class="t small" x="85" y="196" text-anchor="middle">やりとりも材料に</text>
+          <line class="wire" x1="160" y1="170" x2="186" y2="170" marker-end="url(#ah6)"/>
+          <rect class="box" x="190" y="128" width="150" height="84" rx="10"/>
+          <text class="t strong" x="265" y="154" text-anchor="middle">下書きを書く</text>
+          <text class="t" x="265" y="176" text-anchor="middle">軽量モデルが書く</text>
+          <text class="t small" x="265" y="196" text-anchor="middle">名前・重なりを確かめる</text>
+          <line class="wire" x1="340" y1="170" x2="366" y2="170" marker-end="url(#ah6)"/>
+
+          <!-- 合流: 見て、決める -->
+          <rect class="box" x="370" y="20" width="150" height="192" rx="10"/>
+          <text class="t strong" x="445" y="92" text-anchor="middle">下書きを見る</text>
+          <text class="t" x="445" y="116" text-anchor="middle">手順書の中身を</text>
+          <text class="t" x="445" y="136" text-anchor="middle">枠の中に表示</text>
+          <text class="t small" x="445" y="158" text-anchor="middle">まだ登録しない</text>
+          <line class="wire" x1="520" y1="116" x2="546" y2="116" marker-end="url(#ah6)"/>
+          <rect class="box guardbox" x="550" y="74" width="150" height="84" rx="10"/>
+          <text class="t strong" x="625" y="100" text-anchor="middle">登録する</text>
+          <text class="t" x="625" y="122" text-anchor="middle">人がボタンを押す</text>
+          <text class="t small" x="625" y="142" text-anchor="middle">（見送りもできる）</text>
+          <line class="wire" x1="700" y1="116" x2="726" y2="116" marker-end="url(#ah6)"/>
+          <rect class="box app" x="730" y="74" width="140" height="84" rx="10"/>
+          <text class="t mono strong" x="800" y="100" text-anchor="middle">skills/</text>
+          <text class="t mono" x="800" y="122" text-anchor="middle">&lt;名前&gt;/SKILL.md</text>
+          <text class="t small" x="800" y="142" text-anchor="middle">手順書の置き場所</text>
+
+          <!-- 使われる -->
+          <line class="wire" x1="800" y1="158" x2="800" y2="246" marker-end="url(#ah6)"/>
+          <text class="t edge" x="810" y="206">読む</text>
+          <rect class="box" x="730" y="250" width="140" height="70" rx="10"/>
+          <text class="t strong" x="800" y="274" text-anchor="middle">使われる</text>
+          <text class="t" x="800" y="294" text-anchor="middle">新しいチャット</text>
+          <text class="t" x="800" y="312" text-anchor="middle">定時実行</text>
+
+          <!-- 手で置く -->
+          <rect class="box" x="440" y="256" width="200" height="56" rx="10"/>
+          <text class="t strong" x="540" y="280" text-anchor="middle">手でファイルを置く</text>
+          <text class="t small" x="540" y="300" text-anchor="middle">SKILL.md を作って置く</text>
+          <line class="wire" x1="640" y1="260" x2="733" y2="161" marker-end="url(#ah6)"/>
+          <text class="t edge" x="630" y="244" text-anchor="end">置くだけ（作り直し不要）</text>
+
+          <!-- エージェント自身は書けない -->
+          <rect class="box ext" x="10" y="250" width="200" height="70" rx="10"/>
+          <text class="t strong" x="110" y="274" text-anchor="middle">エージェント自身</text>
+          <text class="t small" x="110" y="294" text-anchor="middle">「スキルにして」と頼まれたら</text>
+          <text class="t small" x="110" y="312" text-anchor="middle">「スキル登録」を案内する</text>
+          <line class="wire blocked" x1="210" y1="284" x2="418" y2="284"/>
+          <line class="cross" x1="422" y1="278" x2="434" y2="290"/>
+          <line class="cross" x1="434" y1="278" x2="422" y2="290"/>
+          <text class="t block" x="222" y="274">skills/ には書き込めない</text>
+        </svg>
+      </div>
+      <div class="key"><span><i class="swatch"></i>流れ</span><span><i class="swatch blocked"></i>止めてある</span></div>
+      <figcaption>下書きの道は 2 つあり、どちらも「下書きを見る」で合流します。登録は、必ず人がボタンを押したときだけです。エージェントが <code>skills/</code> に書き込めないのは、ファイルや過去の会話に紛れた悪い指示が、手順書として残り続けないようにするためです（ADR-0007、ADR-0030）。</figcaption>
+    </figure>
+    <div class="howto">
+      <h3>チャットで頼む（スキル登録）</h3>
+      <p>入力欄の <code>/</code> から「スキル登録」を選び、どんな手順書にしたいかを書いて送ります。先頭に「名前:」を書くと、その名前になります（省くと、名前も考えます）。</p>
+      <pre class="example">weekly-sales: 毎週の売上を地域ごとにまとめる</pre>
+      <pre class="example">今やった集計を、毎週使える手順書にして</pre>
+      <p class="eyebrow">2 つ目のように、そのチャットのやりとりを指して頼むこともできます。下書きが気に入らないときは、見送ってから、書き方を変えて頼み直します。</p>
+    </div>
+    <div class="notes">
+      <p><b>繰り返しから提案させるときは「スキル提案」です。</b>入力欄の <code>/</code> から選ぶと、その場で依頼の記録を調べます。チャットを開いたときにも、記録がたまっていれば（5 件以上）裏で調べておき、次に開いたときに知らせます。</p>
+      <p><b>好きな内容を書いて足すときは、ファイルを置きます。</b><code>skills/&lt;名前&gt;/SKILL.md</code> の先頭に <code>name</code>（英小文字・数字・ハイフン）と <code>description</code>（どんなときに使うか）を書き、その下に手順を書きます。例は <code>skills/python-testing/SKILL.md</code> です。</p>
+      <p><b>定時実行と組み合わせられます。</b>登録したスキルの名前を、定時実行の依頼文に書けば、決まった時刻に、その手順で作業させられます。</p>
+    </div>
+  </section>
+
+  <!-- 4. フォルダの関係 -->
+  <!-- 4. 用途パック -->
+  <section id="packs">
+    <header>
+      <div class="eyebrow">別の用途に使う</div>
+      <h2>用途パックと、道具の扱い</h2>
+    </header>
+    <figure>
+      <div class="fig-scroll">
+        <svg viewBox="0 0 880 400" role="img" aria-label="道具は、組み込み、Python で書いたもの、MCP サーバーのもの、の 3 つから来る。どれも、扱いを一緒に書く。扱いから、確認ボタン、送る内容の確認、送る前の引数の確かめ、回数の上限、返事の照合が決まる。結果のマスクは、どの道具にもかかる。">
+          <defs>
+            <marker id="ah5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+          <text class="t colhead" x="10" y="20">道具の出どころ</text>
+          <text class="t colhead" x="310" y="20">扱い（一緒に書く）</text>
+          <text class="t colhead" x="610" y="20">扱いから決まる守り</text>
+
+          <rect class="box" x="10" y="36" width="250" height="88" rx="10"/>
+          <text class="t strong" x="28" y="62">組み込みの道具</text>
+          <text class="t small" x="28" y="84">コード・データベース・Web 検索</text>
+          <text class="t mono" x="28" y="108" style="fill: var(--muted)">config/security.yaml</text>
+
+          <rect class="box" x="10" y="144" width="250" height="88" rx="10"/>
+          <text class="t strong" x="28" y="170">Python の道具</text>
+          <text class="t small" x="28" y="192">@agent_tool を付けた関数</text>
+          <text class="t mono" x="28" y="216" style="fill: var(--muted)">packs/&lt;名前&gt;/tools.py</text>
+
+          <rect class="box ext" x="10" y="252" width="250" height="110" rx="10"/>
+          <text class="t strong" x="28" y="278">MCP の道具</text>
+          <text class="t small" x="28" y="300">社内 API（HTTPS）。書いた道具だけ</text>
+          <text class="t small" x="28" y="320">鍵は .env、証明書は private/</text>
+          <text class="t mono" x="28" y="344" style="fill: var(--muted)">pack.yaml の mcp_servers</text>
+
+          <path class="wire" d="M260,80 H284 V180 H306" marker-end="url(#ah5)"/>
+          <line class="wire" x1="260" y1="188" x2="306" y2="188" marker-end="url(#ah5)"/>
+          <path class="wire" d="M260,306 H284 V196 H306" marker-end="url(#ah5)"/>
+
+          <rect class="box app" x="310" y="70" width="220" height="250" rx="12"/>
+          <text class="t strong" x="328" y="98">道具の扱い</text>
+          <text class="t mono" x="328" y="118" style="fill: var(--muted)">registry.ToolPolicy</text>
+          <text class="t mono" x="328" y="150">label</text>
+          <text class="t small" x="420" y="150">画面の名前</text>
+          <text class="t mono" x="328" y="180">require_approval</text>
+          <text class="t small" x="328" y="198">確認（毎回・怪しいとき・しない）</text>
+          <text class="t mono" x="328" y="228">check_arguments</text>
+          <text class="t small" x="328" y="246">送る前に引数を確かめる</text>
+          <text class="t mono" x="328" y="276">max_calls_per_run</text>
+          <text class="t small" x="328" y="294">1 回の依頼の回数</text>
+          <text class="t mono" x="328" y="312" style="fill: var(--muted)">grounding（照合）ほか</text>
+
+          <line class="wire guard" x1="530" y1="195" x2="606" y2="195" marker-end="url(#ah5)"/>
+          <text class="t edge" x="568" y="186" text-anchor="middle">決まる</text>
+
+          <rect class="box guardbox" x="610" y="36" width="260" height="326" rx="10"/>
+          <rect class="diamond" x="628" y="60" width="7" height="7" transform="rotate(45 631.5 63.5)"/>
+          <text class="t" x="644" y="68">確認ボタン</text>
+          <text class="t mono" x="644" y="86" style="fill: var(--muted)">safety/approvals.py</text>
+          <rect class="diamond" x="628" y="110" width="7" height="7" transform="rotate(45 631.5 113.5)"/>
+          <text class="t" x="644" y="118">送る内容の確認（怪しいとき）</text>
+          <text class="t mono" x="644" y="136" style="fill: var(--muted)">safety/search_screen.py</text>
+          <rect class="diamond" x="628" y="160" width="7" height="7" transform="rotate(45 631.5 163.5)"/>
+          <text class="t" x="644" y="168">送る前の引数の確かめ</text>
+          <text class="t mono" x="644" y="186" style="fill: var(--muted)">safety/guard_middleware.py</text>
+          <rect class="diamond" x="628" y="210" width="7" height="7" transform="rotate(45 631.5 213.5)"/>
+          <text class="t" x="644" y="218">回数の上限</text>
+          <text class="t mono" x="644" y="236" style="fill: var(--muted)">safety/limits.py</text>
+          <rect class="diamond" x="628" y="260" width="7" height="7" transform="rotate(45 631.5 263.5)"/>
+          <text class="t" x="644" y="268">返事の照合と注記</text>
+          <text class="t mono" x="644" y="286" style="fill: var(--muted)">safety/grounding.py</text>
+          <rect class="diamond" x="628" y="310" width="7" height="7" transform="rotate(45 631.5 313.5)"/>
+          <text class="t" x="644" y="318">結果のマスク（どの道具にも）</text>
+          <text class="t mono" x="644" y="336" style="fill: var(--muted)">safety/guard_middleware.py</text>
+
+          <text class="t note" x="10" y="390">どのパックを使うかは、.env の AGENT_PACK で選ぶ（書かなければ data）</text>
+        </svg>
+      </div>
+      <div class="key"><span><i class="swatch"></i>扱いを一緒に書く</span><span><i class="swatch guard"></i>扱いから、自動で決まる</span></div>
+      <figcaption>道具は 3 つの出どころから来ます。どれも、扱い（<code>tools/registry.py</code> の <code>ToolPolicy</code>）を一緒に書くと、確認・送る前の確かめ・回数の上限・照合が自動で決まります。<code>agent.py</code> に、道具ごとの決まりを書き足す必要はありません。結果のマスクは、どの道具にもかかります（ADR-0032）。</figcaption>
+    </figure>
+    <div class="notes">
+      <p><b>用途ごとに違うものだけを、パックに書きます。</b><code>packs/&lt;名前&gt;/</code> の <code>pack.yaml</code>（名前とあいさつ、使う道具、MCP サーバー）、<code>SYSTEM.md</code>（役割の文）、<code>tools.py</code>（Python の道具）です。守りの設定（<code>config/security.yaml</code>）は、どのパックにも共通です。</p>
+      <p><b>いまあるパックは 2 つです。</b><code>data</code>（データ分析。毎日使っているもの）と、見本の <code>internal_api_example</code>（社内の受注システムの見本を MCP で調べ、税込みの金額を Python の道具で出す）。社内の API は MCP でつなぎます。Python の道具は、計算のように毎回同じ答えにしたい処理に使います。</p>
+      <p><b>1 つのアプリは、1 つのパックで動きます。</b>作業フォルダ・長期メモ・スキルは、アプリごとです。2 つの用途を同時に使うときは、アプリを 2 つ動かします。</p>
+      <p><b>手順は <code>docs/tutorials/</code> にあります。</b>パックの作り方、社内 API を MCP でつなぐ方法（見本で試せる）、Python の道具の書き方、確かめ方です。</p>
+    </div>
+  </section>
+
+  <!-- 5. フォルダの関係 -->
+  <section id="folders">
+    <header>
+      <div class="eyebrow">src/data_agent/ の中</div>
+      <h2>フォルダの関係</h2>
+    </header>
+    <figure>
+      <div class="fig-scroll">
+        <svg viewBox="0 0 880 470" role="img" aria-label="上の段の ui、features、evals は、真ん中の agent.py を通してエージェントを動かす。agent.py は、下の段の tools と safety を組み込み、会話の状態を storage に保存する。">
+          <defs>
+            <marker id="ah4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+          <!-- 上の段: 動かす側 -->
+          <rect class="box" x="10" y="16" width="260" height="104" rx="10"/>
+          <text class="t mono strong" x="28" y="44">ui/</text>
+          <text class="t label" x="62" y="44">画面</text>
+          <text class="t mono" x="28" y="68">app.py · connection_guard.py</text>
+          <text class="t mono" x="28" y="88">chat_commands.py ほか 2 つ</text>
+
+          <rect class="box" x="310" y="16" width="260" height="104" rx="10"/>
+          <text class="t mono strong" x="328" y="44">features/</text>
+          <text class="t label" x="408" y="44">便利な機能</text>
+          <text class="t mono" x="328" y="68">schedules.py · schedule_runner.py</text>
+          <text class="t mono" x="328" y="88">skill_mining.py</text>
+
+          <rect class="box ext" x="610" y="16" width="260" height="104" rx="10"/>
+          <text class="t mono strong" x="628" y="44">evals/</text>
+          <text class="t label" x="686" y="44">点検</text>
+          <text class="t mono" x="628" y="68">redteam/ · factcheck/ · common.py</text>
+          <text class="t small" x="628" y="90">ふだんは動かない（測ると料金あり）</text>
+
+          <!-- 真ん中: 組み立て -->
+          <rect class="box app" x="250" y="190" width="380" height="76" rx="12"/>
+          <text class="t mono strong" x="270" y="220">agent.py</text>
+          <text class="t" x="346" y="220">エージェントを組み立てる</text>
+          <text class="t mono" x="270" y="246" style="fill: var(--muted)">settings.py（設定）· packs/&lt;名前&gt;/（用途パック）</text>
+
+          <!-- 下の段: 組み込まれる側 -->
+          <rect class="box" x="10" y="340" width="260" height="116" rx="10"/>
+          <text class="t mono strong" x="28" y="368">tools/</text>
+          <text class="t label" x="84" y="368">道具</text>
+          <text class="t mono" x="28" y="392">code_execution.py · database.py</text>
+          <text class="t mono" x="28" y="412">web_search.py · outputs.py</text>
+          <text class="t mono" x="28" y="432">registry.py · mcp.py · internal_http.py</text>
+
+          <rect class="box guardbox" x="310" y="340" width="260" height="116" rx="10"/>
+          <text class="t mono strong" x="328" y="368">safety/</text>
+          <text class="t label" x="392" y="368">守り</text>
+          <text class="t mono" x="328" y="392">approvals · limits · guardrails</text>
+          <text class="t mono" x="328" y="412">guard_middleware · search_screen</text>
+          <text class="t mono" x="328" y="432">watch_terms · grounding · audit</text>
+
+          <rect class="box" x="610" y="340" width="260" height="116" rx="10"/>
+          <text class="t mono strong" x="628" y="368">storage/</text>
+          <text class="t label" x="700" y="368">保存と記録</text>
+          <text class="t mono" x="628" y="392">persistence.py · chat_history.py</text>
+          <text class="t mono" x="628" y="412">tracing.py · trace_retention.py</text>
+
+          <!-- 矢印 -->
+          <line class="wire" x1="140" y1="120" x2="328" y2="187" marker-end="url(#ah4)"/>
+          <text class="t edge" x="262" y="146" text-anchor="middle">動かす</text>
+          <line class="wire" x1="440" y1="120" x2="440" y2="186" marker-end="url(#ah4)"/>
+          <text class="t edge" x="450" y="158">動かす</text>
+          <line class="wire" x1="740" y1="120" x2="552" y2="187" marker-end="url(#ah4)"/>
+          <text class="t edge" x="690" y="162">代わりの道具で動かす</text>
+          <line class="wire" x1="330" y1="266" x2="142" y2="336" marker-end="url(#ah4)"/>
+          <text class="t edge" x="222" y="292" text-anchor="end">組み込む</text>
+          <line class="wire" x1="440" y1="266" x2="440" y2="336" marker-end="url(#ah4)"/>
+          <text class="t edge" x="450" y="306">組み込む</text>
+          <line class="wire" x1="550" y1="266" x2="738" y2="336" marker-end="url(#ah4)"/>
+          <text class="t edge" x="662" y="292">会話の状態を保存</text>
+        </svg>
+      </div>
+      <figcaption>上の段（画面・定時実行・点検）は、真ん中の <code>agent.py</code> を通してエージェントを動かします。下の段の道具と守りは、組み立てのときに組み込まれます。点検は、本物の Web 検索やデータベースの代わりの道具を入れて動かします。左の一覧のチャットは、画面と定時実行が <code>storage/chat_history.py</code> に直接保存します。</figcaption>
+    </figure>
+    <div class="notes">
+      <p><b>新しいファイルは、役割に合うフォルダに置きます。</b><code>src/data_agent/</code> の直下には足しません（ADR-0028）。</p>
+      <p><b>各フォルダの説明もあります。</b>どのフォルダにも、<code>__init__.py</code> の先頭に、中のファイルの役割を書いてあります。</p>
+      <p><b><code>agent.py</code>・<code>settings.py</code> は動かしません。</b>ファイルの場所をもとに、プロジェクトの場所を計算しているためです。役割の文（もとの <code>prompts/</code>）は、2026-11-17 に用途パック <code>packs/data/</code> へ移しました（ADR-0032）。</p>
+    </div>
+  </section>
+
+  <!-- 6. どこを見るか -->
+  <section id="lookup">
+    <header>
+      <div class="eyebrow">困ったとき</div>
+      <h2>何をしたいときに、どこを見るか</h2>
+    </header>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>したいこと</th><th>見るところ</th></tr></thead>
+        <tbody>
+          <tr><td>上限や確認の決まりを変える</td><td><code>config/security.yaml</code>（変えたら作り直す）</td></tr>
+          <tr><td>Claude への指示を変える</td><td><code>packs/&lt;名前&gt;/SYSTEM.md</code>（データ分析は <code>packs/data/SYSTEM.md</code>）</td></tr>
+          <tr><td>別の用途のエージェントにする</td><td><code>docs/tutorials/</code>（用途パックを作り、<code>.env</code> の <code>AGENT_PACK</code> で選ぶ）</td></tr>
+          <tr><td>道具を足す</td><td>Python なら <code>packs/&lt;名前&gt;/tools.py</code>（<code>@agent_tool</code>）、MCP なら <code>pack.yaml</code> の <code>mcp_servers</code></td></tr>
+          <tr><td>社内の API をつなぐ</td><td><code>pack.yaml</code> の <code>mcp_servers</code>（鍵は <code>.env</code>、社内の認証局の証明書は <code>private/</code>）</td></tr>
+          <tr><td>用途ごとの番号（社員番号など）を伏せる</td><td><code>config/security.yaml</code> の <code>guardrails.custom_rules</code></td></tr>
+          <tr><td>なぜそうなっているかを知る</td><td><code>docs/adr/README.md</code> の一覧</td></tr>
+          <tr><td>まだ決めていないことを見る</td><td><code>docs/adr/README.md</code> の「オーナーの判断待ち」</td></tr>
+          <tr><td>何が起きたかを調べる</td><td>アプリのログの <code>"log": "audit"</code> の行と、Langfuse の画面（localhost:3000）</td></tr>
+          <tr><td>Langfuse の記録を残す日数を変える</td><td><code>config/security.yaml</code> の <code>tracing.retention_days</code>（既定は 90 日。0 で消さない。変えたら作り直す）</td></tr>
+          <tr><td>文章で詳しく読む</td><td><code>docs/architecture.md</code>（このページのもと）と <code>README.md</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="commands">
+      <div class="cmd">
+        <div class="label"><b>作り直して、変更をアプリに反映する</b><span class="fee free">料金なし</span></div>
+        <div class="row"><pre id="cmd-up">docker compose up --build</pre><button type="button" data-copy="cmd-up">写す</button></div>
+      </div>
+      <div class="cmd">
+        <div class="label"><b>いまのパックの中身（道具と、その扱い）を見る</b><span class="fee free">料金なし</span>（何も実行しない）</div>
+        <div class="row"><pre id="cmd-pack">uv run python -m data_agent.tools.registry</pre><button type="button" data-copy="cmd-pack">写す</button></div>
+      </div>
+      <div class="cmd">
+        <div class="label"><b>MCP サーバーにつながるか確かめる</b><span class="fee free">料金なし</span>（道具の一覧を出すだけ）</div>
+        <div class="row"><pre id="cmd-mcp">docker compose run --rm data-agent python -m data_agent.tools.mcp</pre><button type="button" data-copy="cmd-mcp">写す</button></div>
+      </div>
+      <div class="cmd">
+        <div class="label"><b>変えたあとに、整えて、壊れていないか確かめる</b><span class="fee free">料金なし</span>（全部で 10 分ほど）</div>
+        <div class="row"><pre id="cmd-test">uv run ruff format . &amp;&amp; uv run ruff check .
+uv run pytest -q
+bash tests/e2e/regress.sh</pre><button type="button" data-copy="cmd-test">写す</button></div>
+      </div>
+      <div class="cmd">
+        <div class="label"><b>モデルの強さを測る</b><span class="fee paid">料金あり</span>（本物のモデルを呼ぶ。約 1 ドル）</div>
+        <div class="row"><pre id="cmd-eval">uv run python -m data_agent.evals.redteam --model all
+uv run python -m data_agent.evals.factcheck</pre><button type="button" data-copy="cmd-eval">写す</button></div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>もとにした文書: <code>data_agent/docs/architecture.md</code>、決めたことの記録 <code>docs/adr/</code>（とくに ADR-0028 のフォルダ分け、ADR-0029 の名前の変更、ADR-0032 の用途パック、ADR-0033 の MCP）。</span>
+    <span>ファイルを足したり動かしたりしたら、<code>docs/architecture.md</code> とこのページを直します。このページは、2026-11-17 の形を写したものです。</span>
+  </footer>
+</div>
+
+<script>
+document.querySelectorAll("button[data-copy]").forEach(function (button) {
+  button.addEventListener("click", function () {
+    var source = document.getElementById(button.getAttribute("data-copy"));
+    var text = source.textContent;
+    var done = function () {
+      button.textContent = "写しました";
+      setTimeout(function () { button.textContent = "写す"; }, 1600);
+    };
+    var fallback = function () {
+      var range = document.createRange();
+      range.selectNodeContents(source);
+      var selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      button.textContent = "選びました。⌘C で写せます";
+      setTimeout(function () { button.textContent = "写す"; }, 2400);
+    };
+    try {
+      navigator.clipboard.writeText(text).then(done, fallback);
+    } catch (error) {
+      fallback();
+    }
+  });
+});
+</script>

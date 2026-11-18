@@ -1,0 +1,6 @@
+# 実行されるコードの matplotlib の設定。日本語をそのまま描けるようにする
+font.family: sans-serif
+font.sans-serif: IPAexGothic, DejaVu Sans
+axes.unicode_minus: False
+savefig.dpi: 150
+savefig.bbox: tight

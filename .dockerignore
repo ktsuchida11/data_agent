@@ -1,0 +1,17 @@
+# 既定ではすべて除外し、必要なものだけをイメージに入れる。
+# .env などの秘密情報や、workspace/ の中身が紛れ込まないようにするため。
+*
+
+!pyproject.toml
+!uv.lock
+!README.md
+!chainlit.md
+!src/
+!config/
+!packs/
+!skills/
+!memories/
+!.chainlit/
+
+**/__pycache__/
+**/*.pyc

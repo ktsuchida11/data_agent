@@ -1,0 +1,105 @@
+# 手元でコンテナとして動かすための設定（AWS に載せる前の確認用）。
+#   準備: bash scripts/setup_local_db.sh   （初回だけ。会話の保存先を作る）
+#   起動: docker compose up --build
+#   停止: docker compose down
+services:
+  data-agent:
+    build: .
+    image: data-agent:local
+    env_file: .env                # 秘密情報はイメージに入れず、起動時に渡す
+    environment:
+      DB_HOST: postgres           # 会話の保存先。Langfuse と同じ PostgreSQL（下のネットワーク内での名前）
+      DB_PORT: "5432"
+      # Langfuse へのトレースの送信先（同じネットワーク内での名前）。
+      # .env に LANGFUSE_PUBLIC_KEY と LANGFUSE_SECRET_KEY がなければ、送信はしない
+      LANGFUSE_BASE_URL: http://langfuse-web:3000
+      # コードを実行するコンテナ（下の sandbox）。この行を消すと、コードの実行は使えなくなる
+      SANDBOX_URL: http://sandbox:8080
+      # データを読みに行くデータベース（任意）。.env に DATA_DB_DOCKER_HOST があれば、コンテナの中では
+      # そちらを接続先にする（scripts/setup_data_db.sh が書く。手元の PC からとコンテナからとで、名前が違うため）。
+      # なければ、.env の DATA_DB_HOST をそのまま使う。どちらもなければ、データベースのツールは付かない
+      DATA_DB_HOST: ${DATA_DB_DOCKER_HOST:-${DATA_DB_HOST:-}}
+      DATA_DB_PORT: ${DATA_DB_DOCKER_PORT:-${DATA_DB_PORT:-5432}}
+    depends_on:
+      - sandbox
+    networks:
+      - default
+      - langfuse
+      - sandbox
+    ports:
+      - "127.0.0.1:8000:8000"     # 手元の PC からだけ開けるようにする
+    volumes:
+      - ./workspace:/app/workspace  # エージェントの作業フォルダ
+      - ./memories:/app/memories    # 長期メモ
+      - ./skills:/app/skills        # 手順書。承認したスキルの提案も、ここに書き出す
+      # 見張る言葉（顧客の名前など）の一覧。Web 検索の質問文に入っていたら、検索の前に確かめる（ADR-0022）。
+      # イメージには入れず、読み取り専用で渡す。エージェントからは読めない場所
+      - ./private:/app/private:ro
+    read_only: true               # 上の書き込める場所と一時フォルダ以外には書き込めないようにする
+    tmpfs:
+      - /tmp
+      # Chainlit の一時フォルダ。終了時に Chainlit がこのフォルダごと消そうとして失敗し、
+      # ログに "Application shutdown failed" が出る。後片付けはその前に済んでいて、動作への影響はない。
+      # 画面に出す画像やファイルを、Chainlit がここに置く。アプリのユーザー（uid 10001）が書けるようにする
+      - /app/.files:uid=10001,gid=10001,mode=0700
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  # エージェントが書いた Python のコードを実行する、専用のコンテナ。
+  # 秘密情報（.env）も、作業フォルダも、外へ出るネットワークも持たせない。
+  # コードが触れるのは、アプリから受け取ったファイルだけ（src/data_agent/tools/code_execution.py）。
+  sandbox:
+    build: ./sandbox
+    image: data-agent-sandbox:local
+    networks:
+      - sandbox                   # アプリとだけつながるネットワーク。インターネットにも、PostgreSQL にも届かない
+    read_only: true
+    tmpfs:
+      # コードが書き込める場所は、メモリ上の一時フォルダだけ。実行のたびに空にする
+      - /work:size=512m,uid=10001,gid=10001,mode=0700
+      - /tmp:size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g                 # 一時フォルダの分も含む。超えたコードは止められる
+    memswap_limit: 1g
+    cpus: 1.0
+    pids_limit: 256
+    restart: unless-stopped
+
+  # 社内 API の見本（チュートリアル用。docs/tutorials/04-mcp.md）。ふだんは起動しない。
+  #   起動: docker compose --profile example up -d internal-api-example
+  # 架空の受注システムを、HTTPS（自分で作った認証局の証明書）と鍵（.env の EXAMPLE_API_TOKEN）で公開する。
+  # 認証局の証明書は ./private/example-ca/ca.crt に書き出す（アプリは、これを ca_file として読む）。
+  # 認証局の秘密鍵は ./examples/internal_api/ca-key/ に置き、アプリには渡さない。
+  internal-api-example:
+    profiles: [example]
+    image: data-agent:local         # アプリと同じイメージを使う（MCP のライブラリが入っている）
+    command: ["python", "examples/internal_api/server.py"]
+    environment:
+      EXAMPLE_API_TOKEN: ${EXAMPLE_API_TOKEN:-}   # .env の値だけを渡す（ほかの鍵は渡さない）
+    volumes:
+      - ./examples:/app/examples:ro
+      - ./private/example-ca:/certs
+      - ./examples/internal_api/ca-key:/ca-key
+    networks:
+      - default                     # アプリと同じネットワーク。アプリからは https://internal-api-example:8443 で届く
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  # コードを実行するコンテナ用。internal: true で、外（インターネットや手元の PC）へ出る経路をなくす
+  sandbox:
+    internal: true
+  # Langfuse の compose が作るネットワーク。PostgreSQL に届くように参加する（Langfuse が起動している必要がある）
+  langfuse:
+    name: langfuse_default
+    external: true

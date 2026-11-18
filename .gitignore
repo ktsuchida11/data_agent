@@ -1,0 +1,20 @@
+.venv/
+__pycache__/
+.env
+.env.*
+.pytest_cache/
+.ruff_cache/
+.files/
+logs/
+workspace/
+# 社内 API の見本の認証局（docs/tutorials/04-mcp.md）。秘密鍵と、書き出した証明書
+examples/internal_api/ca-key/
+private/example-ca/
+# 外に出さないもの（社内の証明書、見張る言葉の一覧など）。見本（*.example.*）だけは残す
+private/*
+!private/*.example.*
+# Mac やエディタ、作業用の道具が作るもの
+.DS_Store
+.playwright-mcp/
+.claude/settings.local.json
+.claude/.cc-writes/

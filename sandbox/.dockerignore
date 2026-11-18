@@ -1,0 +1,5 @@
+# イメージに入れるのは、サーバーと設定だけ
+*
+!server.py
+!matplotlibrc
+!requirements.txt

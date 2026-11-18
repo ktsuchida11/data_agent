@@ -1,0 +1,33 @@
+# 読めなくする列の一覧（データベース: coding_agent_sample）。scripts/setup_data_db.sh が読む。
+#
+# - 1行に1つ、「表.列」と書く。書いた列は、エージェントから読めなくなる。
+# - 先頭に # がある行は、無視される（その列は読める）。# を消すと、読めなくなる。
+# - 表をまるごと読めなくするときは、「表.*」と書く。
+# - 下の印（〜らしい）は、列の名前からの推測。データの中身は見ていない。
+#   印のない列にも個人情報が入っていることがあるので、必ず目で確かめること。
+# - 読めなくした列がある表を使うビューは、自動で読めなくなる。
+#   読ませてよいビューは、「+ビューの名前」と書く。
+# - 書き換えたら、次のコマンドをもう一度実行する。
+#     bash scripts/setup_data_db.sh --sample
+
+# ---- 表 customers（約 20 行）
+# customers.customer_id    # integer
+# customers.name    # 人の名前らしい（text）。顧客の名前は、エージェントに読ませる（ADR-0023）。
+#                     Web 検索に入れようとすると確かめる（config/watch_columns.coding_agent_sample.txt で見張る）
+# customers.region    # text
+customers.email    # メールアドレスらしい（text）
+# customers.registered_on    # date
+
+# ---- 表 orders（約 2007 行）
+# orders.order_id    # integer
+# orders.order_date    # date
+# orders.customer_id    # integer
+# orders.product_id    # integer
+# orders.quantity    # integer
+# orders.amount    # integer
+
+# ---- 表 products（約 8 行）
+# products.product_id    # integer
+# products.name    # ？ 人の名前なら、先頭の # を消す（text）
+# products.category    # text
+# products.unit_price    # integer

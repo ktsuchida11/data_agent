@@ -1,0 +1,22 @@
+# 用途パック「データ分析」（ADR-0032）。用途ごとに違うものだけを、ここに書く。
+# 守りの設定（確認・回数の上限・ガードレールなど）は、config/security.yaml にある。
+# どのパックを使うかは、.env の AGENT_PACK で選ぶ（書かなければ data）。書き方は docs/tutorials/ を参照。
+
+title: データ分析エージェント
+greeting: データ分析エージェントです。作業フォルダ `workspace/` の中で作業します。
+
+# 役割の文（システムプロンプト）。このフォルダからの場所
+prompt: SYSTEM.md
+
+# 組み込みのツールのうち、使うもの。
+#   run_python : コードの実行（.env の SANDBOX_URL が要る）
+#   database   : データベースの読み取り（.env の DATA_DB_HOST が要る）
+#   web_search : Web 検索
+# それぞれ、config/security.yaml の enabled: false でも止められる
+builtin_tools: [run_python, database, web_search]
+
+# 自分で書いた Python のツール（docs/tutorials/05-python-tool.md）。このパックにはない
+python_tools: []
+
+# つなぐ MCP サーバー（docs/tutorials/04-mcp.md）。このパックにはない
+mcp_servers: {}

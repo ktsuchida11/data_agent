@@ -1,0 +1,14 @@
+# コード実行の環境に入れるライブラリ。変えたら、次のコマンドで requirements.txt を作り直す。
+#   uv pip compile sandbox/requirements.in --universal --generate-hashes \
+#     --python-version 3.12 -o sandbox/requirements.txt
+pandas
+numpy
+matplotlib
+openpyxl
+xlsxwriter
+python-pptx
+python-docx
+pypdf
+pdfplumber
+pillow
+tabulate
