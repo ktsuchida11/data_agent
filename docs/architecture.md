@@ -215,7 +215,7 @@ src/data_agent/
 | `sandbox/` | コードを実行する箱（コンテナ）の作り方 |
 | `scripts/` | データベースの準備と、依存ライブラリの点検 |
 | `tests/` | 単体テスト（`tests/*.py`）と、画面と同じ通信での確認（`tests/e2e/`） |
-| `docs/adr/` | 決めたことと、その理由（35 件。一覧は `docs/adr/README.md`、書き方のひな形は `template.md`。書き方と一覧の漏れは `tests/test_adr_records.py` が確かめる） |
+| `docs/adr/` | 決めたことと、その理由（36 件。一覧は `docs/adr/README.md`、書き方のひな形は `template.md`。書き方と一覧の漏れは `tests/test_adr_records.py` が確かめる） |
 | `docs/tutorials/` | 別の用途のエージェントにする手順（パックの作り方、MCP、Python の道具、確かめ方） |
 | `workspace/`・`memories/`・`skills/` | エージェントが使う、作業フォルダ・長期メモ・手順書 |
 | `private/` | 見張る言葉の一覧、社内の認証局の証明書など、表に出さないもの（アプリは読めて、エージェントからは見えない） |

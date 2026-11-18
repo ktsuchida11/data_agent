@@ -1,0 +1,47 @@
+# GitHub に送るたびに、整形の確かめ・書き方とセキュリティの点検・単体テストを流す（ADR-0036）。
+# 料金: 非公開のリポジトリは、無料のプランで月 2,000 分まで無料。1 回は数分。
+# 本物のモデルは呼ばない（API キーは渡さない）。画面の回帰確認（tests/e2e）は、手元で流す。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: # GitHub の画面から手で流すとき
+
+# 読むだけ。リポジトリへの書き込みや、ほかの権限は渡さない
+permissions:
+  contents: read
+
+# 同じ枝に続けて送ったら、古いほうを止める（無料の分数を使い切らないため）
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: 点検とテスト
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      # 使う部品は、版の名前ではなく、中身が変わらない ID で固定する（すり替え対策）。版はコメントに書く
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false # 取り出したあと、GitHub の鍵を残さない
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.11.6" # 手元と同じ uv
+          enable-cache: true
+
+      - name: 依存を入れる（uv.lock のとおり）
+        run: uv sync --frozen
+
+      - name: 整形の確かめ（ruff format）
+        run: uv run --frozen ruff format --check .
+
+      - name: 書き方とセキュリティの点検（ruff check）
+        run: uv run --frozen ruff check --output-format=github .
+
+      - name: 単体テスト（偽のモデル。料金なし）
+        run: uv run --frozen pytest -q

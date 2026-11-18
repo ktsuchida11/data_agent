@@ -95,6 +95,7 @@ AI のエージェントがこのフォルダで作業するときの決まり�
 | [0033](docs/adr/0033-mcp-internal-api-over-https.md) | 社内の API は、MCP（streamable HTTP、HTTPS）で、アプリの中からつなぐ（`langchain-mcp-adapters`。Claude API の MCP コネクタは、守りを通らないので使わない）。使うツールは `pack.yaml` に名指しし、名前は「サーバー__ツール」。確認の既定は「毎回」。鍵は `.env`（`${…}`）、社内の認証局は `ca_file`。サーバーの説明と結果は外から来たデータとして扱う。つながらなければ起動を止める（`tools/mcp.py`）。MCP でない API を Python のツールから呼ぶ部品は、取りやめた（オーナーの社内 API は MCP でラップ済み。2026-11-17） | 採用（実装済み）。オーナーが決めた（2026-11-17）。本物の社内 API では、まだ |
 | [0034](docs/adr/0034-decision-records-lint-format-and-security-checks.md) | 決めたこと（機能を足す・変える・やめる、守りの決まり、依存、オーナーが選んだこと）は、頼まれなくても ADR に残す（AGENTS.md の「決めたことを残す（既定）」、ひな形 `docs/adr/template.md`、確かめ `tests/test_adr_records.py`）。書き方の点検と整形は Ruff（`uv run ruff check .`・`uv run ruff format .`。セキュリティの点検 `S` を含む。誤検知は理由を添えて `noqa`）。関数の分岐は 10 まで。コードを変えたら、点検・整形・単体テストを通す | 採用（実装済み）。オーナーが決めた（2026-11-18） |
 | [0035](docs/adr/0035-git-and-private-github-repository.md) | 変更の記録は git で残す（このフォルダだけ。枝は `main`）。置き場所は GitHub の非公開のリポジトリ `ktsuchida11/data_agent`（無料）。記録しないものは `.gitignore`。`memories/` と `skills/` は記録に入れる。記録の前に git-secrets の点検が走る。コミットとプッシュは、オーナーに頼まれたときだけ |
+| [0036](docs/adr/0036-ci-on-github-actions.md) | GitHub に送るたびに、GitHub Actions で `ruff format --check`・`ruff check`・`pytest -q` を流す（`.github/workflows/ci.yml`。無料の月 2,000 分の中）。本物のモデルは呼ばず、秘密の値も渡さない。権限は読むだけ。使う部品はコミットの番号で固定する。画面の回帰確認と脆弱性の点検は CI に入れない（手元と Mac の毎日の点検） |
 
 ## オーナーの判断待ち
 
@@ -121,7 +122,7 @@ AI のエージェントがこのフォルダで作業するときの決まり�
 ## 作業の決まり
 
 - 決めたことは、上の「決めたことを残す（既定）」のとおりに ADR に残す。
-- コードを変えたら、`uv run ruff format .`（整形）、`uv run ruff check .`（書き方とセキュリティの点検）、`uv run --offline pytest -q` を通す（ADR-0034。設定は `pyproject.toml` の `[tool.ruff]`）。
+- コードを変えたら、`uv run ruff format .`（整形）、`uv run ruff check .`（書き方とセキュリティの点検）、`uv run --offline pytest -q` を通す（ADR-0034。設定は `pyproject.toml` の `[tool.ruff]`）。GitHub に送ると、同じ 3 つを CI が流す（ADR-0036）。
   - 点検の誤検知は、`# noqa: <番号>  理由` と、理由を添えて止める。理由のない `noqa` は書かない。点検の決まりを外すときは、`pyproject.toml` に理由を書く。
   - 関数は、分岐が多くなりすぎないように（Ruff の C901。10 まで）、役割ごとに分ける。分けた関数には、何をするかを 1 行の docstring で書く。
   - リファクタリングは、動きを変えない。変える前後で、単体テストと `bash tests/e2e/regress.sh` を通す。
