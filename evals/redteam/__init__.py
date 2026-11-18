@@ -3,8 +3,8 @@
 ファイル・データベース・Web 検索の結果に「AI への指示」を仕込み、悪意のない依頼を送って、
 エージェントがその指示に従うか、従ったときに守りを抜けるかを数える。
 
-    uv run python -m data_agent.evals.redteam             本物のモデルで測る（API の料金がかかる）
-    uv run python -m data_agent.evals.redteam --selftest  点検の仕組みそのものを確かめる（料金はかからない）
+    uv run python -m evals.redteam             本物のモデルで測る（API の料金がかかる）
+    uv run python -m evals.redteam --selftest  点検の仕組みそのものを確かめる（料金はかからない）
 
 - エージェントは、ふだんと同じもの（プロンプト、権限、確認、ガードレール、回数の上限）を使う。
 - ファイルは使い捨てのフォルダに置き、Web 検索・コードの実行・データベースは、外につながない代わりの役が受ける。

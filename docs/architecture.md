@@ -2,9 +2,9 @@
 
 この文書は、data_agent が「何でできていて、1 回の依頼がどう流れるか」を、短くまとめた地図です。
 同じ内容を図で見られるページもあります: [architecture-map.html](architecture-map.html)（ダウンロードして、ブラウザで開く）。
-細かい使い方は [README.md](../README.md)、決めた理由は [docs/adr/](adr/README.md)、開発するときの決まりは [AGENTS.md](../AGENTS.md) にあります。
+細かい使い方は [使い方](usage.md)・[動かし方と準備](setup.md)・[守りの仕組み](safety.md)（一覧は [README.md](../README.md) の「資料の案内」）、決めた理由は [docs/adr/](adr/README.md)、開発するときの決まりは [AGENTS.md](../AGENTS.md) にあります。
 
-最終更新: 2026-11-17
+最終更新: 2026-11-18
 
 ## 1. ひとことで
 
@@ -65,7 +65,8 @@ data_agent は、`archive/` のものを、コードもデータベースも使�
                 役割の文と道具の一覧は、用途パック（packs/<名前>/）で決まる
  ③ 道具を使う  Claude が道具を選ぶ。使うたびに、次の守りを通る
                   ・回数の上限（safety/limits.py）
-                  ・危ない操作の前の確認ボタン（safety/approvals.py。削除、長期メモへの書き込みなど）
+                  ・危ない操作の前の確認ボタン（決まりは safety/approvals.py、ボタンは ui/approval_dialog.py。
+                    削除、長期メモへの書き込みなど）
                   ・道具の結果と返事のマスク（safety/guard_middleware.py）
                   ・送る内容の確認（safety/search_screen.py。Web 検索と、auto にしたパックの道具。
                     見張る言葉の一覧は safety/watch_terms.py）
@@ -78,7 +79,7 @@ data_agent は、`archive/` のものを、コードもデータベースも使�
                 パックの道具: Python で書いたもの（packs/<名前>/tools.py）と、
                               MCP サーバーのもの（tools/mcp.py。HTTPS の社内 API など）
                 手分け: サブエージェント（調べるだけの explorer と、汎用の general-purpose）
- ⑤ 返事        少しずつ画面に流す。データを読んだ回は、返事の数と URL を根拠と照合し、
+ ⑤ 返事        少しずつ画面に流す（ui/replies.py）。データを読んだ回は、返事の数と URL を根拠と照合し、
                 確かめられないものがあれば、下に注記を出す（safety/grounding.py）
  ⑥ 残す        会話: PostgreSQL（storage/persistence.py、storage/chat_history.py）
                 監査ログ: 誰が・いつ・何をしたか（safety/audit.py。アプリのログに出る）
@@ -135,7 +136,7 @@ data_agent は、`archive/` のものを、コードもデータベースも使�
 2. **繰り返しから提案させる（「スキル提案」。ADR-0007）:** 依頼の記録から、繰り返している作業（3 回以上）を見つけて、下書きを作ります。
    - `/` から「スキル提案」を選ぶと、その場で調べて、下書きの中身と、当てはまった依頼の例を見せます。
    - チャットを開いたときにも、記録がたまっていれば（5 件以上、前回から 24 時間以上たち 5 件以上増えていれば）、裏で調べておき、次に開いたときに知らせます。
-3. **ファイルを置く:** `skills/<名前>/SKILL.md` を、手で作って置きます。先頭に `name`（英小文字・数字・ハイフン）と `description`（どんなときに使うか）を書き、その下に手順を書きます。例は `skills/python-testing/SKILL.md` です。
+3. **ファイルを置く:** `skills/<名前>/SKILL.md` を、手で作って置きます。先頭に `name`（英小文字・数字・ハイフン）と `description`（どんなときに使うか）を書き、その下に手順を書きます。例は `skills/data-summary/SKILL.md`（データを集計して、表とグラフにまとめる手順）です。
 
 登録したスキルは、新しいチャットと、定時実行から使われます。アプリを作り直す必要はありません。
 
@@ -146,6 +147,7 @@ data_agent は、`archive/` のものを、コードもデータベースも使�
 | 守り | 何を防ぐか | どこ |
 |---|---|---|
 | ログイン | 知らない人が使う | `ui/app.py`（パスワードは `.env` にハッシュで置く） |
+| ログインの失敗の回数の制限 | 仕込まれたコードが、パスワードを総当たりで試す | `ui/login_guard.py`、`config/security.yaml` の `login`（接続元ごとに数える。ADR-0038） |
 | 接続元の確認 | 別のサイトのページが、ログイン中のあなたとしてチャットにつなぐ | `ui/connection_guard.py`（ADR-0027） |
 | 画面のヘッダー | 画面に入り込んだスクリプト | `ui/connection_guard.py`（ADR-0020） |
 | 見える範囲 | `.env`・設定・コードを、エージェントが読む | `agent.py`（作業フォルダだけを見せる） |
@@ -170,8 +172,11 @@ src/data_agent/
 ├─ agent.py        エージェントを組み立てる（道具・守り・サブエージェントをつなぐ）
 ├─ settings.py     .env と config/security.yaml と、用途パック（packs/<名前>/pack.yaml）を読む
 ├─ ui/             画面
-│   ├─ app.py                 画面の本体（返事の表示、確認のボタン、設定欄）
+│   ├─ app.py                 画面の本体（起動、ログイン、設定欄、依頼の受け付け）
+│   ├─ replies.py             返事とツールの表示、返事の照合の注記
+│   ├─ approval_dialog.py     操作の前の確認のダイアログ（承認と拒否のボタン）
 │   ├─ connection_guard.py    入口の守り（接続元の確認、クッキー、画面のヘッダー）
+│   ├─ login_guard.py         ログインの失敗の回数の制限（接続元ごと）
 │   └─ chat_commands.py ほか  入力欄の `/` のコマンド（アーカイブ、定時実行、スキルの提案と登録）
 ├─ tools/          道具
 │   ├─ code_execution.py  コードの実行（run_python）
@@ -195,38 +200,38 @@ src/data_agent/
 │   ├─ chat_history.py    左の一覧のチャットの保存
 │   ├─ tracing.py         Langfuse への記録
 │   └─ trace_retention.py Langfuse の古い記録を、毎日消す（既定は 90 日）
-├─ features/       便利な機能
-│   ├─ schedules.py       定時実行の予定
-│   ├─ schedule_runner.py 定時実行の本体
-│   └─ skill_mining.py    スキルの下書き（繰り返しからの提案と、チャットで頼まれたもの）
-└─ evals/          点検（測るためのもの。ふだんは動かない。本物のモデルを呼ぶと料金がかかる）
-    ├─ common.py          2 つの点検で共通の部品
-    ├─ redteam/           指示の乗っ取りへの強さ（python -m data_agent.evals.redteam）
-    └─ factcheck/         作り話の多さ（python -m data_agent.evals.factcheck）
+└─ features/       便利な機能
+    ├─ schedules.py       定時実行の予定
+    ├─ schedule_runner.py 定時実行の本体
+    └─ skill_mining.py    スキルの下書き（繰り返しからの提案と、チャットで頼まれたもの）
 ```
 
-`src/` の外は、次のとおりです。
+点検の道具は、アプリの外（リポジトリの直下の `evals/`）にあります。測るときにだけ使い、アプリのイメージには入れません（ADR-0039）。
+
+```
+evals/              点検（ふだんは動かない。本物のモデルを呼ぶと料金がかかる）
+├─ common.py        2 つの点検で共通の部品（実行、進み具合の表示、結果の保存）
+├─ redteam/         指示の乗っ取りへの強さ（python -m evals.redteam）
+└─ factcheck/       作り話の多さ（python -m evals.factcheck）
+```
+
+`src/` の外のフォルダと、設定の置き場所は、[README](../README.md) の「フォルダの地図」と「設定の置き場所」にまとめています。ここには、資料と、フォルダに入らないファイルだけを書きます。
 
 | 場所 | 中身 |
 |---|---|
-| `config/` | 上限・確認・マスクなどの設定（`security.yaml`。どのパックにも共通）と、データベースで読めなくする列の一覧 |
-| `packs/` | 用途パック。`data/`（データ分析）と、見本の `internal_api_example/`（社内の受注システムを MCP で調べ、税込みの金額を Python の道具で出す） |
-| `examples/internal_api/` | 社内 API の見本（HTTPS と鍵つき。チュートリアルと画面の回帰確認で使う。本番では使わない） |
-| `sandbox/` | コードを実行する箱（コンテナ）の作り方 |
-| `scripts/` | データベースの準備と、依存ライブラリの点検 |
-| `tests/` | 単体テスト（`tests/*.py`）と、画面と同じ通信での確認（`tests/e2e/`） |
-| `docs/adr/` | 決めたことと、その理由（36 件。一覧は `docs/adr/README.md`、書き方のひな形は `template.md`。書き方と一覧の漏れは `tests/test_adr_records.py` が確かめる） |
-| `docs/tutorials/` | 別の用途のエージェントにする手順（パックの作り方、MCP、Python の道具、確かめ方） |
-| `workspace/`・`memories/`・`skills/` | エージェントが使う、作業フォルダ・長期メモ・手順書 |
-| `private/` | 見張る言葉の一覧、社内の認証局の証明書など、表に出さないもの（アプリは読めて、エージェントからは見えない） |
-| `.chainlit/` | 画面の設定（`config.toml`）と、画面の言葉の翻訳（Chainlit が作るもの） |
-| `Dockerfile`・`compose.yaml` | コンテナで動かすための定義 |
+| `docs/adr/` | 決めたことと、その理由（39 件。一覧は `docs/adr/README.md`、書き方のひな形は `template.md`。書き方と一覧の漏れは `tests/test_adr_records.py` が確かめる） |
+| `docs/*.md` | 使う人向けの説明: 動かし方と準備（`setup.md`）、使い方（`usage.md`）、守りの仕組み（`safety.md`）、開発と確かめ（`development.md`）、別の用途に使う（`packs.md`）、進捗（`progress.md`）。README は、資料の案内と、フォルダの地図・設定の置き場所だけにしている（ADR-0037、ADR-0039） |
+| `Dockerfile`・`compose.yaml` | コンテナで動かすための定義。社内 API の見本（`internal-api-example`）は `--profile example` のときだけ起動する |
+| `.github/workflows/ci.yml` | GitHub に送るたびに、整形・点検・単体テストを流す（ADR-0036） |
+| `LICENSE`・`SECURITY.md` | ライセンス（MIT）と、脆弱性の知らせ方・分かっている制約（ADR-0038） |
+| `chainlit.md` | 画面に出す説明文。ないと Chainlit が起動時に作ろうとする |
+| `AGENTS.md`・`CLAUDE.md` | 開発する人と AI エージェント向けの案内（いまの状況、必ず守ること、作業の決まり、はまりどころ）。`CLAUDE.md` は、Claude Code に同じものを読ませるための 1 行 |
 
 ## 7. 何をしたいときに、どこを見るか
 
 | したいこと | 見るところ |
 |---|---|
-| 動かす・作り直す | `docker compose up --build`（README の「コンテナで動かす」） |
+| 動かす・作り直す | `docker compose up --build`（[動かし方と準備](setup.md) の「コンテナで動かす」） |
 | 上限や確認の決まりを変える | `config/security.yaml`（変えたら作り直す） |
 | Claude への指示を変える | `packs/<名前>/SYSTEM.md`（データ分析は `packs/data/SYSTEM.md`） |
 | 別の用途のエージェントにする | `docs/tutorials/`（用途パックを作り、`.env` の `AGENT_PACK` で選ぶ） |
@@ -238,4 +243,4 @@ src/data_agent/
 | 何が起きたかを調べる | アプリのログの `"log": "audit"` の行と、Langfuse の画面 |
 | Langfuse の記録を残す日数を変える | `config/security.yaml` の `tracing.retention_days`（既定は 90 日。0 で消さない。変えたら作り直す） |
 | 変えたあとに、整えて、壊れていないか確かめる（料金なし） | `uv run ruff format .`、`uv run ruff check .`、`uv run pytest -q`、`bash tests/e2e/regress.sh` |
-| モデルの強さを測る（料金あり） | `python -m data_agent.evals.redteam`、`python -m data_agent.evals.factcheck`（オーナーが実行） |
+| モデルの強さを測る（料金あり） | `python -m evals.redteam`、`python -m evals.factcheck`（オーナーが実行） |

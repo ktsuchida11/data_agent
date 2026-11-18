@@ -65,6 +65,17 @@ def current_user_id() -> str | None:
     return getattr(cl.context.session.user, "id", None)
 
 
+async def scrub_saved_input(step_id: str, raw: str, masked: str) -> None:
+    """保存済みの入力を、マスクしたものに置き換える（過去のチャットを保存しているときだけ）。"""
+    history = get_history()
+    if history is None:
+        return
+    # 保存の手前でもマスクしている（app.py の _mask_text）。これは、念のための置き換え。
+    # Chainlit は、利用者のメッセージとチャットの名前を裏で保存する。それが終わるのを待ってから置き換える
+    await asyncio.sleep(1)
+    await history.scrub_user_input(cl.user_session.get("thread_id"), step_id, raw, masked)
+
+
 def button_target(action: cl.Action, key: str) -> tuple[ChatHistoryDataLayer, str, str] | None:
     """ボタンの対象（保存先、利用者の ID、対象の ID）。ボタンの中身は利用者の側から送られてくるので、形式を確かめる。"""
     history, user_id = get_history(), current_user_id()

@@ -188,7 +188,7 @@ ADR の「見直す条件」（記録を読んで、判定の空振りが見つ�
 
 ## 関連
 
-- [src/data_agent/evals/factcheck/](../../src/data_agent/evals/factcheck/)（`catalog.py`、`judge.py`、`runner.py`）
+- [evals/factcheck/](../../evals/factcheck/)（`catalog.py`、`judge.py`、`runner.py`）
 - [tests/test_factcheck.py](../../tests/test_factcheck.py)
 - ADR-0020（OWASP の点検。LLM09 の行）、ADR-0022（Web 検索の前の確認。桁区切りの読み方を直した）
 - 記録: `logs/factcheck/20261115-183342.json`、`-183400.json`、`-183420.json`

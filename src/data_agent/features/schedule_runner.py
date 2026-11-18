@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 import uuid
 from collections.abc import Callable
@@ -37,14 +38,6 @@ _AUTO_REJECT = "定時実行では利用者が確認できないので、この�
 _MAX_ROUNDS = 10  # 承認待ちで止まった回数の上限
 _PARALLEL = 2  # 同時に実行する予定の数
 _AUTHOR = "データ分析エージェント"
-
-
-def _final_text(messages: list[Any]) -> str:
-    """最後の返事の文章を取り出す。"""
-    for message in reversed(messages):
-        if isinstance(message, AIMessage) and message.text:
-            return message.text
-    return ""
 
 
 class _Used:
@@ -153,7 +146,7 @@ async def run_schedule(
         else:
             raise RuntimeError("確認待ちが繰り返されたので、打ち切りました。")
         messages = state.values.get("messages", [])
-        answer, _ = guard.scan(_final_text(messages))
+        answer, _ = guard.scan(grounding.final_text(messages))
         note = _note(answer, used, messages, guard)  # 返事がないときは、照合しない
         answer = answer or "（返事がありませんでした）"
         if rejected:
@@ -213,12 +206,7 @@ async def _main() -> None:
     if pool is None:
         raise SystemExit("定時実行には、会話の保存先（DB_HOST）の設定が必要です。")
     history = build_data_layer(settings, mask=lambda text: get_guard().scan(text)[0])
-    agents: dict[str, Any] = {}
-
-    def agent_for(model: str) -> Any:
-        if model not in agents:
-            agents[model] = build_agent(checkpointer, main_model=model)
-        return agents[model]
+    agent_for = functools.cache(lambda model: build_agent(checkpointer, main_model=model))  # モデルごとに 1 回だけ作る
 
     try:
         await ensure_schema(pool, schedules.SCHEMA)

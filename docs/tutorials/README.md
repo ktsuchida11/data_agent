@@ -49,4 +49,4 @@ data_agent/
 
 - **全体の仕組み:** [docs/architecture.md](../architecture.md)（図で見るときは [architecture-map.html](../architecture-map.html)）
 - **決めた理由:** [docs/adr/](../adr/README.md)。用途パックは ADR-0032、MCP は ADR-0033。
-- **細かい使い方:** [README.md](../../README.md)
+- **細かい使い方:** [使い方](../usage.md)、[動かし方と準備](../setup.md)、[守りの仕組み](../safety.md)、[開発と確かめ](../development.md)

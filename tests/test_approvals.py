@@ -52,8 +52,8 @@ PERMISSIONS = _load("PERMISSIONS")
         ("write", "/certs/server.pem", "deny"),
         ("read", "/deploy/id_rsa", "deny"),
         ("write", "/.git/config", "deny"),
-        ("read", "/skills/python-testing/SKILL.md", "allow"),
-        ("write", "/skills/python-testing/SKILL.md", "deny"),
+        ("read", "/skills/data-summary/SKILL.md", "allow"),
+        ("write", "/skills/data-summary/SKILL.md", "deny"),
         ("read", "/memories/AGENTS.md", "allow"),
         ("write", "/memories/AGENTS.md", "interrupt"),
     ],
@@ -102,7 +102,7 @@ def _policy(**kwargs) -> ApprovalPolicy:
         # 権限の決まりで断られる書き込みは、先に確かめない（ツールが自分で断る）
         ("write_file", {"file_path": "/skills/x/SKILL.md", "content": "x"}, STRICT, None),
         ("write_file", {"file_path": "/.env", "content": "x"}, STRICT, None),
-        ("delete", {"file_path": "/skills/python-testing/SKILL.md"}, STANDARD, None),
+        ("delete", {"file_path": "/skills/data-summary/SKILL.md"}, STANDARD, None),
         ("delete", {"file_path": "/app/.env"}, STANDARD, None),
     ],
 )

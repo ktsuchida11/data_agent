@@ -37,6 +37,15 @@ class Limits(BaseModel):
     max_tool_calls_per_run: int = 120
 
 
+class LoginLimits(BaseModel):
+    """ログインの失敗の回数の制限（ui/login_guard.py。ADR-0038）。接続元ごとに数える。"""
+
+    free_attempts: int = Field(default=5, ge=1)  # 続けて試せる回数。使い切ると、しばらく受け付けない
+    lock_seconds: int = Field(default=60, ge=1)  # 1 回目に受け付けない時間。そのあとも試すたびに倍にする
+    max_lock_seconds: int = Field(default=900, ge=1)  # 受け付けない時間の上限
+    forget_after_seconds: int = Field(default=3600, ge=1)  # 最後に試してから、この時間がたったら数え直す
+
+
 class ApprovalConfig(BaseModel):
     """確認（承認）の設定。エージェントが操作を実行する前に、利用者に確かめる（approvals.py）。
 
@@ -345,6 +354,7 @@ def _check_output_dir(value: str) -> str:
 
 class SecurityConfig(BaseModel):
     limits: Limits = Field(default_factory=Limits)
+    login: LoginLimits = Field(default_factory=LoginLimits)
     approvals: ApprovalConfig = Field(default_factory=ApprovalConfig)
     code_execution: CodeExecutionLimits = Field(default_factory=CodeExecutionLimits)
     database: DatabaseLimits = Field(default_factory=DatabaseLimits)

@@ -365,7 +365,7 @@ footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line)
           <rect class="box" x="70" y="384" width="330" height="74" rx="10"/>
           <text class="t strong" x="90" y="412">④ 返事</text>
           <text class="t" x="90" y="434">少しずつ画面に流す</text>
-          <text class="t mono" x="90" y="450" style="fill: var(--muted)">ui/app.py</text>
+          <text class="t mono" x="90" y="450" style="fill: var(--muted)">ui/replies.py</text>
           <line class="wire guard" x1="400" y1="421" x2="448" y2="421"/>
           <rect class="box guardbox" x="450" y="384" width="410" height="74" rx="10"/>
           <rect class="diamond" x="468" y="414" width="7" height="7" transform="rotate(45 471.5 417.5)"/>
@@ -644,7 +644,7 @@ footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line)
     </div>
     <div class="notes">
       <p><b>繰り返しから提案させるときは「スキル提案」です。</b>入力欄の <code>/</code> から選ぶと、その場で依頼の記録を調べます。チャットを開いたときにも、記録がたまっていれば（5 件以上）裏で調べておき、次に開いたときに知らせます。</p>
-      <p><b>好きな内容を書いて足すときは、ファイルを置きます。</b><code>skills/&lt;名前&gt;/SKILL.md</code> の先頭に <code>name</code>（英小文字・数字・ハイフン）と <code>description</code>（どんなときに使うか）を書き、その下に手順を書きます。例は <code>skills/python-testing/SKILL.md</code> です。</p>
+      <p><b>好きな内容を書いて足すときは、ファイルを置きます。</b><code>skills/&lt;名前&gt;/SKILL.md</code> の先頭に <code>name</code>（英小文字・数字・ハイフン）と <code>description</code>（どんなときに使うか）を書き、その下に手順を書きます。例は <code>skills/data-summary/SKILL.md</code>（データを集計して、表とグラフにまとめる手順）です。</p>
       <p><b>定時実行と組み合わせられます。</b>登録したスキルの名前を、定時実行の依頼文に書けば、決まった時刻に、その手順で作業させられます。</p>
     </div>
   </section>
@@ -863,8 +863,8 @@ bash tests/e2e/regress.sh</pre><button type="button" data-copy="cmd-test">写す
       </div>
       <div class="cmd">
         <div class="label"><b>モデルの強さを測る</b><span class="fee paid">料金あり</span>（本物のモデルを呼ぶ。約 1 ドル）</div>
-        <div class="row"><pre id="cmd-eval">uv run python -m data_agent.evals.redteam --model all
-uv run python -m data_agent.evals.factcheck</pre><button type="button" data-copy="cmd-eval">写す</button></div>
+        <div class="row"><pre id="cmd-eval">uv run python -m evals.redteam --model all
+uv run python -m evals.factcheck</pre><button type="button" data-copy="cmd-eval">写す</button></div>
       </div>
     </div>
   </section>

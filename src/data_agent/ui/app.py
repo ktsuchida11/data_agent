@@ -2,18 +2,17 @@
 
 起動: uv run chainlit run src/data_agent/ui/app.py --host 127.0.0.1 --port 8000
 
-- 最終回答はトークン単位でストリーミング表示する。
-- ツール呼び出しは折りたたみの Step として表示する（サブエージェント内の呼び出しも名前付きで出す）。
-- 確認が必要な操作（削除など。approvals.py）は、内容を見せて、ボタンで承認／拒否してから再開する。
-- 確認のしかた（標準 / 毎回確認）は、設定欄でチャットごとに選べる。
+- 起動と終了、ログイン、チャットの始まりと再開、設定欄（モデルと確認のしかた）、依頼の受け付けを書く。
+- 返事とツールの表示は replies.py、操作の前の確認のダイアログは approval_dialog.py。
+- 依頼ごとに「実行 → 確認 → 再開」を、確認待ちがなくなるまで繰り返す（_drive）。
 """
 
 from __future__ import annotations
 
 import asyncio
+import functools
 import hashlib
 import hmac
-import json
 import logging
 import os
 import re
@@ -26,30 +25,26 @@ from chainlit.config import config as chainlit_config
 from chainlit.data import get_data_layer
 from chainlit.input_widget import Select
 from chainlit.types import ThreadDict
-from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
 from langgraph.types import Command
 
-from data_agent.agent import approval_policy, build_agent, tool_policies
+from data_agent.agent import approval_policy, build_agent
 from data_agent.features import schedule_runner, schedules, skill_mining
 from data_agent.features.skill_mining import SkillStore
-from data_agent.safety import approvals, grounding
+from data_agent.safety import approvals
 from data_agent.safety.audit import audit, bind
 from data_agent.safety.guardrails import masked_only
-from data_agent.settings import PROJECT_ROOT, get_guard, get_pack, get_security, get_settings
+from data_agent.settings import get_guard, get_pack, get_security, get_settings
 from data_agent.storage import trace_retention, tracing
 from data_agent.storage.chat_history import build_data_layer, ensure_schema
 from data_agent.storage.persistence import open_checkpointer
-from data_agent.tools import code_execution, mcp, registry
-from data_agent.ui import chat_commands, schedule_commands, skill_commands
+from data_agent.tools import mcp
+from data_agent.ui import approval_dialog, chat_commands, replies, schedule_commands, skill_commands
 from data_agent.ui.connection_guard import ConnectionGuard, SecurityHeaders
+from data_agent.ui.login_guard import LoginGuard, LoginThrottle
 
 # 定時実行とスキルの提案のコマンドを、アーカイブなどのコマンドと同じ入口（入力欄の `/`）に足す
 chat_commands.register(schedule_commands.COMMANDS, schedule_commands.HANDLERS)
 chat_commands.register(skill_commands.COMMANDS, skill_commands.HANDLERS)
-
-_STEP_PREVIEW = 4_000  # Step に表示するツール入出力の上限（文字）
-# その場に表示する画像の種類。SVG は中にスクリプトを書けるので、ダウンロードだけにする
-_INLINE_IMAGES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +73,17 @@ def _origin_rejected(kind: str, origin: str) -> None:
     audit("origin_rejected", kind=kind, origin=origin[:200])
 
 
+def _login_throttled(client: str, wait_seconds: int) -> None:
+    audit("login_throttled", client=client[:100], wait_seconds=wait_seconds)
+
+
+# ログインの失敗の回数の制限（ADR-0038。login_guard.py）。設定は config/security.yaml の login。
+# 接続元の検査より先に付けるので、その内側に入る（接続元で断った通信は数えない）
+chainlit.server.app.add_middleware(
+    LoginGuard, throttle=LoginThrottle(**get_security().login.model_dump()), on_block=_login_throttled
+)
+
+
 # 接続元の検査と、HTTPS でのクッキーの Secure（ADR-0027。connection_guard.py）。一覧は .chainlit/config.toml の allow_origins。
 # SecurityHeaders より先に付けるので、その内側に入り、断った応答にもヘッダーが付く
 _allowed_origins = list(chainlit_config.project.allow_origins or [])
@@ -88,8 +94,6 @@ chainlit.server.app.add_middleware(SecurityHeaders)  # 画面に付ける HTTP �
 
 # エージェントは起動時（_startup）以降に作る。会話の保存先（PostgreSQL）への接続は、
 # サーバーのイベントループの中で開く必要があるため。
-# モデルごとに1つずつ作って使い回す。会話は保存先にあるので、途中でモデルを替えても続きから話せる
-_agents: dict[str, Any] = {}
 _db_pool = None
 _checkpointer = None
 _tracing_handler = None  # Langfuse へのトレースの送信（設定したときだけ）
@@ -97,10 +101,10 @@ _scheduler_task = None  # 定時実行の見張り（会話を PostgreSQL に保
 _retention_task = None  # Langfuse の古い記録を、1 日に 1 回消す（Langfuse に送っているときだけ。ADR-0031）
 
 
+@functools.cache
 def _agent_for(model: str) -> Any:
-    if model not in _agents:
-        _agents[model] = build_agent(_checkpointer, main_model=model)
-    return _agents[model]
+    """モデルごとに 1 回だけ作って使い回す。会話は保存先にあるので、途中でモデルを替えても続きから話せる。"""
+    return build_agent(_checkpointer, main_model=model)
 
 
 def _current_model() -> str:
@@ -380,24 +384,13 @@ async def on_message(message: cl.Message) -> None:
         await _log_request(masked, tools)
     finally:
         if scrubbed:
-            await _scrub_saved_input(message.id, raw, masked)
+            await chat_commands.scrub_saved_input(message.id, raw, masked)
         await _save_model()
 
 
 def _mask_text(text: str) -> str:
     """保存する文章をマスクする（過去のチャットの保存先に、マスクする前の文章を残さない）。"""
     return get_guard().scan(text)[0]
-
-
-async def _scrub_saved_input(step_id: str, raw: str, masked: str) -> None:
-    """保存済みの入力を、マスクしたものに置き換える（過去のチャットを保存しているときだけ）。"""
-    history = chat_commands.get_history()
-    if history is None:
-        return
-    # 保存の手前でもマスクしている（_mask_text）。これは、念のための置き換え。
-    # Chainlit は、利用者のメッセージとチャットの名前を裏で保存する。それが終わるのを待ってから置き換える
-    await asyncio.sleep(1)
-    await history.scrub_user_input(cl.user_session.get("thread_id"), step_id, raw, masked)
 
 
 def _config() -> dict:
@@ -415,40 +408,21 @@ def _config() -> dict:
     return config
 
 
-class _Turn:
-    """1回の依頼で使ったツールと、その結果、出した返事。返事の照合（ADR-0026）に使う。
-
-    このファイルでは @dataclass を使わない。Chainlit は、このファイルを実行し終えてから sys.modules に
-    登録するので、実行の途中で @dataclass が自分のモジュールを探すと、見つからずに起動が止まる
-    （tests/e2e/check_boot.py で確かめる）。
-    """
-
-    __slots__ = ("answer", "calls", "replies", "results", "used")
-
-    def __init__(self) -> None:
-        self.used: list[str] = []  # 使ったツールの名前（サブエージェントの分も含む）
-        self.calls: list[grounding.Call] = []  # 使ったツールの名前と引数
-        self.results: list[str] = []  # ツールの結果（サブエージェントの分も含む）
-        self.replies: list[str] = []  # 出した返事の文（ツールを呼ぶ前に話した文も含む。マスクしたあとのもの）
-        self.answer: cl.Message | None = None  # 最後に出した返事（注記は、ここに付ける）
-
-
 async def _drive(payload: dict | Command | None, config: dict) -> list[str]:
     """確認待ちがなくなるまで「実行 → 確認 → 再開」を繰り返す。使ったツールの名前を返す。
 
     payload が None のときは実行せず、確認待ちが残っているかを見るところから始める。
     """
     agent = _current_agent()  # 途中で設定欄のモデルを替えられても、この依頼は同じエージェントで最後まで進める
-    turn = _Turn()
-    steps: dict[str, cl.Step] = {}  # 結果を待っているツールの表示。確認をはさんでも、同じ表示を使い続ける
+    turn = replies.Turn()  # 確認をはさんでも、同じ表示と記録を使い続ける
     while True:
         if payload is not None:
-            await _run(agent, payload, config, steps, turn)
+            await replies.stream(agent, payload, config, turn)
         state = await agent.aget_state(config)
         if not state.interrupts:
             break
         mode = approval_policy().mode_of(state.values)
-        answers = {it.id: await _answer(it.value, mode) for it in state.interrupts}
+        answers = {it.id: await approval_dialog.answer(it.value, mode) for it in state.interrupts}
         # 答えを待っている間に、別の画面（開き直した画面など）で先に答えが出ていたら、こちらの答えは使わない
         # （こちらが時間切れで「拒否」を返すと、すでに承認されて終わった操作に、あとから答えることになる）
         pending = {it.id for it in (await agent.aget_state(config)).interrupts}
@@ -457,43 +431,8 @@ async def _drive(payload: dict | Command | None, config: dict) -> list[str]:
             await cl.Message(content="この確認には、別の画面ですでに答えが出ていました。こちらの答えは使っていません。").send()
             break
         payload = Command(resume=answers)
-    for step in steps.values():  # 結果が届かなかった表示を閉じる
-        step.output = "（結果がありません）"
-        await step.update()
-    await _note_unverified(agent, config, turn)
+    await replies.finish(agent, config, turn)
     return turn.used
-
-
-async def _note_unverified(agent: Any, config: dict, turn: _Turn) -> None:
-    """データを読んだ回の返事の数と URL を、根拠と照合する。確かめられないものがあれば、返事の下に注記を出す（ADR-0026）。
-
-    照合するのは、その回に出した返事のすべて（ツールを呼ぶ前に話した文も含む）。注記は、最後の返事の下に1つだけ出す。
-    根拠は、このチャットの利用者の発言とツールの結果（サブエージェントの分も含む）と、長期メモ。返事は止めない。
-    注記は画面と保存した会話にだけ付け、モデルに渡る会話には入れない（次の返事に持ち込まないため）。
-    """
-    answer = turn.answer
-    if answer is None:
-        return
-    try:
-        state = await agent.aget_state(config)
-        _, text = grounding.review(
-            turn.replies,
-            turn.calls,
-            messages=state.values.get("messages", []),
-            results=turn.results,
-            memory_dir=PROJECT_ROOT / "memories",
-            config=registry.grounding_config(get_security(), tool_policies()),
-            where="chat",
-            labels=registry.grounding_labels(tool_policies()),
-        )
-        if not text:
-            return
-        text, _ = get_guard().scan(text)
-        answer.content = f"{answer.content}\n\n{text}"
-        await answer.update()
-    except Exception:
-        # 照合できなくても、会話は止めない
-        logger.exception("返事の照合に失敗しました")
 
 
 async def _log_request(text: str, tools: list[str]) -> None:
@@ -506,232 +445,3 @@ async def _log_request(text: str, tools: list[str]) -> None:
     except Exception:
         # 記録できなくても、会話は続ける
         logger.exception("依頼の記録に失敗しました")
-
-
-async def _run(agent: Any, payload: dict | Command, config: dict, steps: dict[str, cl.Step], turn: _Turn) -> None:
-    """エージェントを動かして、途中経過と返事を画面に出す。使ったツール・その結果・出した返事を turn に書く。
-
-    steps は、結果を待っているツールの表示（ツール呼び出しの ID → 表示）。確認のあとで再開すると、
-    止まっていた呼び出しがもう一度流れてくるので、同じ ID のものは、表示を作り直さない。
-    """
-    bubble = _Bubble(turn)
-    async for namespace, mode, data in agent.astream(payload, config, stream_mode=["messages", "updates"], subgraphs=True):
-        if mode == "messages":
-            text = _answer_text(data[0], namespace)
-            if text:
-                await bubble.write(text)
-            continue
-        for msg in _updated_messages(data):
-            if isinstance(msg, AIMessage) and msg.tool_calls:
-                # ツール呼び出しの前に話していた内容は確定させ、Step の後に新しい吹き出しを始める
-                await bubble.close()
-                await _open_steps(msg.tool_calls, namespace, steps, turn)
-            elif isinstance(msg, ToolMessage) and msg.tool_call_id in steps:
-                await _close_step(msg, steps.pop(msg.tool_call_id), turn)
-
-    for step in steps.values():  # 確認を待って止まった（結果は、再開したあとに入る）
-        step.output = "（確認待ち）"
-        await step.update()
-    await bubble.close()
-
-
-class _Bubble:
-    """いま書いている返事の吹き出し。確定させたら、返事として turn に記録し、次の吹き出しを用意する。"""
-
-    __slots__ = ("message", "turn")
-
-    def __init__(self, turn: _Turn) -> None:
-        self.turn = turn
-        self.message = cl.Message(content="")
-
-    async def write(self, text: str) -> None:
-        await self.message.stream_token(text)
-
-    async def close(self) -> None:
-        """書いた分があれば確定させる（マスクしてから送る）。何も書いていなければ、何もしない。"""
-        if not self.message.content:
-            return
-        await _send_answer(self.message)
-        self.turn.replies.append(self.message.content)
-        self.turn.answer = self.message
-        self.message = cl.Message(content="")
-
-
-def _answer_text(chunk: Any, namespace: tuple) -> str:
-    """返事として画面に流す文字。流すのは親エージェントの発言だけ（サブエージェントの途中経過は Step で見せる）。"""
-    if namespace or not isinstance(chunk, AIMessage) or not chunk.text:
-        return ""
-    if isinstance(chunk, AIMessageChunk):
-        return chunk.text
-    # モデルを呼ばずに作られた返事（回数の上限で止めたときの知らせ）。少しずつではなく、まとめて届く
-    return "" if chunk.tool_calls else chunk.text
-
-
-def _updated_messages(data: dict) -> list[Any]:
-    """updates の流れから、ノードが足したメッセージを、届いた順に取り出す（確認の中断は除く）。"""
-    found: list[Any] = []
-    for node, update in data.items():
-        if node == "__interrupt__" or not isinstance(update, dict):
-            continue
-        messages = update.get("messages") or []
-        if isinstance(messages, list):
-            found.extend(messages)
-    return found
-
-
-async def _open_steps(calls: list[dict], namespace: tuple, steps: dict[str, cl.Step], turn: _Turn) -> None:
-    """ツールの呼び出しを表示し、turn に記録する。再開で同じ呼び出しがもう一度流れてきたら、作り直さない。"""
-    for call in calls:
-        if call["id"] in steps:
-            continue
-        turn.used.append(call["name"])
-        turn.calls.append((call["name"], dict(call.get("args") or {})))
-        steps[call["id"]] = await _open_step(call, namespace)
-
-
-async def _close_step(msg: ToolMessage, step: cl.Step, turn: _Turn) -> None:
-    """ツールの結果を表示に書き、turn に記録する。コードが作ったファイルは、画面に出す。"""
-    turn.results.append(msg.text)
-    step.output = _preview(msg.text)
-    step.is_error = msg.status == "error"
-    await step.update()
-    if msg.name == code_execution.TOOL_NAME:
-        await _send_files(code_execution.artifact_files(msg.artifact))
-
-
-async def _send_files(files: list[dict]) -> None:
-    """コードが作ったファイルを画面に出す。画像はその場に表示し、ほかはダウンロードできるようにする。"""
-    root = get_settings().workspace_dir.resolve()
-    elements: list[Any] = []
-    shown: list[str] = []
-    for item in files:
-        path = (root / item["path"].lstrip("/")).resolve()
-        if not path.is_relative_to(root) or not path.is_file():
-            continue
-        kind = cl.Image if path.suffix.lower() in _INLINE_IMAGES else cl.File
-        elements.append(kind(name=path.name, path=str(path), display="inline"))
-        shown.append(item["path"])
-    if not elements:
-        return
-    listing = "\n".join(f"- {approvals.inline(path)}" for path in shown)  # 名前の ` や改行で、説明を書き足させない
-    try:
-        await cl.Message(content=f"作成したファイル（作業フォルダの中の場所）:\n{listing}", elements=elements).send()
-    except Exception:
-        # 画面に出せなくても、ファイルは作業フォルダに保存済み。会話は止めない
-        logger.exception("作成したファイルを画面に出せませんでした")
-
-
-async def _send_answer(answer: cl.Message) -> None:
-    """返事を確定させる。途中経過として流した文字はマスク前のものなので、確定するときにマスクする。"""
-    answer.content, _ = get_guard().scan(answer.content)
-    await answer.send()
-
-
-def _masked_args(args: dict) -> str:
-    """ツールの引数を、画面に出す形にする（マスクして、長すぎる分は省く）。"""
-    text, _ = get_guard().scan(json.dumps(args, ensure_ascii=False, indent=2))
-    return _preview(text)
-
-
-async def _open_step(call: dict, namespace: tuple) -> cl.Step:
-    prefix = "サブエージェント › " if namespace else ""
-    step = cl.Step(name=f"{prefix}{call['name']}", type="tool", show_input="json")
-    step.input = _masked_args(call["args"])
-    await step.send()
-    return step
-
-
-async def _answer(request: dict, mode: str) -> dict:
-    """止まっている操作（HITLRequest の action_requests）ごとに、承認か拒否かを決めて、HITLResponse を返す。"""
-    policy = approval_policy()
-    remembered: list[str] = cl.user_session.get("approval_remembered") or []
-    decisions = []
-    for action in request.get("action_requests", []):
-        name, args = action["name"], action.get("args") or {}
-        review = policy.review_action(action, mode)  # Web 検索は、判定の記録（見つかったもの）も読み戻す
-        if review is None:
-            # 止まったあとで設定が変わった、など。決まりでは確かめなくてよい操作でも、止まった以上は確かめる
-            title, detail = approvals.describe(name, args)
-            review = approvals.Review(name, approvals.ALWAYS, title, "", detail, can_remember=False)
-        if review.can_remember and name in remembered:
-            # 「このチャットでは以後確認しない」を選んだ操作。利用者に聞かずに承認する
-            audit("approval", tool=name, decision="approve", kind=review.kind, mode=mode, auto="remembered")
-            decisions.append({"type": "approve"})
-            continue
-        decisions.append(await _ask_approval(review, mode))
-    return {"decisions": decisions}
-
-
-async def _ask_approval(review: approvals.Review, mode: str) -> dict:
-    """操作の内容を見せて、ボタンで答えてもらう。HITL の決定（承認か拒否）を返す。"""
-    guard = get_guard()
-    title, _ = guard.scan(review.title)
-    detail, _ = guard.scan(review.detail)
-    timeout = get_security().approvals.timeout_seconds
-    actions = [cl.Action(name="approve", payload={"decision": "approve"}, label="承認")]
-    if review.can_remember:
-        actions.append(
-            cl.Action(name="approve_remember", payload={"decision": "remember"}, label="承認（このチャットでは以後確認しない）")
-        )
-    actions += [
-        cl.Action(name="reject", payload={"decision": "reject"}, label="拒否"),
-        cl.Action(name="reject_reason", payload={"decision": "reject_reason"}, label="拒否して理由を伝える"),
-    ]
-    content = "\n\n".join(part for part in (f"**確認: {title}**", review.reason, detail) if part)
-    ask = cl.AskActionMessage(content=content, actions=actions, timeout=timeout)
-    res = await ask.send()
-    choice = res["payload"].get("decision") if res else None
-
-    reason = ""
-    if choice == "reject_reason":
-        reason = await _ask_reason(timeout)
-    approved = choice in ("approve", "remember")
-    if choice == "remember":
-        remembered = cl.user_session.get("approval_remembered") or []
-        cl.user_session.set("approval_remembered", sorted({*remembered, review.name}))
-    audit(
-        "approval",
-        tool=review.name,
-        decision="approve" if approved else "reject",
-        kind=review.kind,
-        mode=mode,
-        answered=res is not None,
-        remembered=True if choice == "remember" else None,
-        with_reason=True if reason else None,
-    )
-    # Chainlit は、答えたあとの表示を「Selected: …」に書き換える。何を承認・拒否したかが残るように、書き直す
-    if approved:
-        outcome = "承認しました（このチャットでは、以後この操作を確認しません）" if choice == "remember" else "承認しました"
-    else:
-        outcome = "拒否しました" if res is not None else "時間内に答えがなかったので、実行しませんでした"
-    ask.content = f"**{outcome}:** {title}"
-    await ask.update()
-
-    if approved:
-        return {"type": "approve"}
-    if res is None:
-        return {"type": "reject", "message": "時間内に利用者の答えがなかったので、実行しませんでした。"}
-    message = "ユーザーが実行を許可しませんでした。"
-    if reason:
-        message += f" 理由: {reason}"
-    return {"type": "reject", "message": message}
-
-
-async def _ask_reason(timeout: int) -> str:
-    """拒否する理由を書いてもらう。書かれた文章は、ガードレールを通してからモデルに渡す。"""
-    res = await cl.AskUserMessage(
-        content="拒否する理由や、代わりにしてほしいことを書いてください。エージェントに伝えます。", timeout=timeout
-    ).send()
-    raw = str((res or {}).get("output") or "").strip()
-    if not raw:
-        return ""
-    masked, findings = get_guard().scan(raw)
-    for finding in findings:
-        audit("guardrail", place="input", **finding.as_dict())
-    if masked != raw and res.get("id"):
-        await _scrub_saved_input(res["id"], raw, masked)
-    return masked[: get_security().limits.max_input_chars]
-
-
-def _preview(text: str) -> str:
-    return text if len(text) <= _STEP_PREVIEW else text[:_STEP_PREVIEW] + "\n…（省略）"

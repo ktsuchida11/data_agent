@@ -24,7 +24,7 @@ from psycopg import sql
 from psycopg.conninfo import make_conninfo
 
 from data_agent.safety.audit import audit
-from data_agent.safety.search_screen import normalize
+from data_agent.safety.search_screen import compact, normalize
 from data_agent.settings import PROJECT_ROOT, DatabaseLimits, Settings, get_security, get_settings
 
 _MIN_WATCH_WIDE = 2  # 見張る言葉の長さの下限（日本語を含むもの）
@@ -46,17 +46,13 @@ _ASCII_WORD = re.compile(r"[0-9a-z]+")
 _ALNUM = frozenset("0123456789abcdefghijklmnopqrstuvwxyz")
 
 
-def _compact(text: str) -> str:
-    return "".join(text.split())
-
-
 # ---------- 一覧 ----------
 def watch_variants(term: str) -> list[str]:
     """見張る言葉（normalize したもの）と、会社の種類（株式会社など）を除いた形。"""
     found = [term]
     if _WIDE.search(term):
         short = _COMPANY_WIDE.sub("", term).strip()
-        if short != term and len(_compact(short)) >= _MIN_WATCH_SHORT:
+        if short != term and len(compact(short)) >= _MIN_WATCH_SHORT:
             found.append(short)
     else:
         short = _COMPANY_ASCII.sub("", term).strip(" ,")
@@ -88,8 +84,8 @@ class WatchTerms:
                 continue
             for term in watch_variants(normalize(value)):
                 if _WIDE.search(term):
-                    if len(_compact(term)) >= _MIN_WATCH_WIDE:
-                        wide.add(_compact(term))
+                    if len(compact(term)) >= _MIN_WATCH_WIDE:
+                        wide.add(compact(term))
                 elif len(term) >= _MIN_WATCH_ASCII:
                     plain.add(term)
         return cls(tuple(sorted(wide)), tuple(sorted(plain)))
@@ -111,11 +107,11 @@ class WatchTerms:
     def find(self, question: str) -> list[str]:
         """question（normalize したもの）に含まれる言葉。数万件あっても速いように、言葉の頭で引く。"""
         wide_index, ascii_index, ascii_rest = self._index
-        compact = _compact(question)
+        squeezed = compact(question)
         wide: set[str] = set()
-        for i in range(len(compact) - 1):
-            for term in wide_index.get(compact[i : i + 2], ()):
-                if compact.startswith(term, i):
+        for i in range(len(squeezed) - 1):
+            for term in wide_index.get(squeezed[i : i + 2], ()):
+                if squeezed.startswith(term, i):
                     wide.add(term)
         plain: set[str] = set()
         for match in _ASCII_WORD.finditer(question):  # 語の頭（前の文字は英数字ではない）ごとに引く

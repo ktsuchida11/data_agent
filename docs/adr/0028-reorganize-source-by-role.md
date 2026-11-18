@@ -1,6 +1,6 @@
 # ADR-0028: コードを役割ごとのフォルダに分け、重なっている処理をまとめる
 
-- **状態:** 採用（実装済み）。`prompts/`（役割の文）は、2026-11-17 に用途パック `packs/data/` へ移した（→ ADR-0032）。オーナーが決めた（2026-11-16。提案した案 A・B・C・D のすべてと、`customer_needs_agent/` を別のフォルダに移すこと）
+- **状態:** 採用（実装済み）。`prompts/`（役割の文）は、2026-11-17 に用途パック `packs/data/` へ移した（→ ADR-0032）。点検の道具（`evals/`）は、2026-11-19 にアプリの外（リポジトリの直下）に移した（→ ADR-0039）。オーナーが決めた（2026-11-16。提案した案 A・B・C・D のすべてと、`customer_needs_agent/` を別のフォルダに移すこと）
 - **日付:** 2026-11-16
 - **決定者:** プロジェクトオーナー
 - **対象:** data_agent（と、`LangChain/` の下のフォルダの置き方）
@@ -21,7 +21,7 @@
 
 ## 決定
 
-1. **仕組みの説明書を作る**（`docs/architecture.md`）。動いているもの、1 回の依頼の流れ、守りの一覧、ファイルの地図を、1 か所にまとめる。README の構成の表は、フォルダ単位の短いものにして、細かい地図は説明書に一本化する。
+1. **仕組みの説明書を作る**（`docs/architecture.md`）。動いているもの、1 回の依頼の流れ、守りの一覧、ファイルの地図を、1 か所にまとめる。README の構成の表は、フォルダ単位の短いものにして、細かい地図は説明書に一本化する。（→ 2026-11-18 に、README の構成の表もなくし、説明書の「6. ファイルの地図」に一本化した。ADR-0037）
 2. **動いていないものを `LangChain/archive/` に移す。** `customer_needs_agent/` と、その設計書（`02_顧客ニーズ調査エージェント設計書.md`）。消さずに残す。
 3. **`src/data_agent/` を、役割ごとのフォルダに分ける（案 D）。**
 
@@ -32,7 +32,7 @@
    | `safety/` | `approvals.py`、`limits.py`、`guardrails.py`、`guard_middleware.py`、`search_screen.py`、`watch_terms.py`（新しい）、`grounding.py`、`audit.py` |
    | `storage/` | `persistence.py`、`chat_history.py`、`tracing.py` |
    | `features/` | `schedules.py`、`schedule_runner.py`、`skill_mining.py` |
-   | `evals/` | `redteam/`、`factcheck/`、`common.py`（新しい） |
+   | `evals/` | `redteam/`、`factcheck/`、`common.py`（新しい）。（→ 2026-11-19 に、リポジトリの直下の `evals/` に移した。ADR-0039） |
 
    - `agent.py`・`settings.py`・`prompts/` は、動かさない。ファイルの場所をもとに動いているため（プロジェクトの場所の計算、プロンプトの読み込み、`agent.py` を文字として読むテスト、Dockerfile の起動のコマンド）。
    - 各フォルダの `__init__.py` の先頭に、中のファイルの役割を書く。
@@ -104,5 +104,5 @@
 ## 関連
 
 - [docs/architecture.md](../architecture.md)（仕組みの説明書。ファイルの地図）
-- [src/data_agent/safety/watch_terms.py](../../src/data_agent/safety/watch_terms.py)、[src/data_agent/evals/common.py](../../src/data_agent/evals/common.py)
+- [src/data_agent/safety/watch_terms.py](../../src/data_agent/safety/watch_terms.py)、[evals/common.py](../../evals/common.py)
 - ADR-0020（OWASP の点検。点検のコマンド）、ADR-0022（Web 検索の前の確認。見張る言葉）、ADR-0025（誤情報の点検）、ADR-0026（返事の照合）

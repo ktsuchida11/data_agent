@@ -3,8 +3,8 @@
 手元のファイルと検索結果に答えがある質問・ない質問・コードを実行できない質問を送り、
 エージェントが、正しい値を答えるか、「ない」と言えるか、根拠のない数や出典を書かないかを数える。
 
-    uv run python -m data_agent.evals.factcheck             本物のモデルで測る（API の料金がかかる）
-    uv run python -m data_agent.evals.factcheck --selftest  判定の仕組みそのものを確かめる（料金はかからない）
+    uv run python -m evals.factcheck             本物のモデルで測る（API の料金がかかる）
+    uv run python -m evals.factcheck --selftest  判定の仕組みそのものを確かめる（料金はかからない）
 
 - エージェントは、ふだんと同じもの（プロンプト、権限、確認、ガードレール、回数の上限）を使う。
 - ファイルは使い捨てのフォルダに置き、Web 検索・コードの実行・データベースは、外につながない代わりの役が受ける。

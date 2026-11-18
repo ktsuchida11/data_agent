@@ -36,5 +36,5 @@
 
 ## 関連
 
-- [README.md](../../README.md) の「動かし方」「進捗」
+- [README.md](../../README.md) の「動かし方」「進捗」（→ 2026-11-18 に、進捗は [docs/progress.md](../progress.md)、コンテナでの動かし方は [docs/setup.md](../setup.md) に移した。ADR-0037）
 - [src/data_agent/agent.py](../../src/data_agent/agent.py) の `_backend` と `PERMISSIONS`

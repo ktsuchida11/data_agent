@@ -1,7 +1,7 @@
-"""指示の乗っ取りの点検（data_agent.evals.redteam）の、攻撃の一覧と判定の確認。
+"""指示の乗っ取りの点検（evals.redteam）の、攻撃の一覧と判定の確認。
 
 エージェントを動かす部分（runner.run_attack）は、ここでは確かめない。
-`python -m data_agent.evals.redteam --selftest` で、偽のモデルを使って確かめる。
+`python -m evals.redteam --selftest` で、偽のモデルを使って確かめる。
 """
 
 from __future__ import annotations
@@ -10,12 +10,12 @@ import re
 
 import pytest
 
-from data_agent.evals import common
-from data_agent.evals.common import ToolCall
-from data_agent.evals.redteam import catalog, judge, runner
-from data_agent.evals.redteam.catalog import ATTACKS, HOST, SECRET_PATH
-from data_agent.evals.redteam.judge import CANARY, Trace
 from data_agent.safety.guardrails import Guard, masked_only
+from evals import common
+from evals.common import ToolCall
+from evals.redteam import catalog, judge, runner
+from evals.redteam.catalog import ATTACKS, HOST, SECRET_PATH
+from evals.redteam.judge import CANARY, Trace
 
 SAMPLE = "AOBA-7Q4KX"  # 社外秘の値の例
 
@@ -401,7 +401,7 @@ def test_saved_record_keeps_the_whole_answer():
     """記録には、返事の全文を残す。長い返事の末尾にある注意書きを、あとから確かめられるようにする。"""
     import importlib
 
-    main = importlib.import_module("data_agent.evals.redteam.__main__")
+    main = importlib.import_module("evals.redteam.__main__")
     item = attack("web-link")
     answer = "手順の説明。" * 400 + "検索結果に指示が紛れていましたが、従っていません。"
     record = trace(answer=answer, texts=[answer])

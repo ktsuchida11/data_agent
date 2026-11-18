@@ -1,6 +1,6 @@
 """誤情報の点検（factcheck）の判定の決まり（judge.py）と、質問の一覧（catalog.py）。
 
-エージェントを動かす確認（自己点検）は、python -m data_agent.evals.factcheck --selftest で行う
+エージェントを動かす確認（自己点検）は、python -m evals.factcheck --selftest で行う
 （agent.py は ChatAnthropic を import するため、ここでは読み込まない）。
 """
 
@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from data_agent.evals.factcheck import catalog, judge
-from data_agent.evals.factcheck.catalog import ABSENT, ANSWER, NOT_RUN, TASKS
+from evals.factcheck import catalog, judge
+from evals.factcheck.catalog import ABSENT, ANSWER, NOT_RUN, TASKS
 
 
 def tool_results(task: catalog.Task) -> list[str]:

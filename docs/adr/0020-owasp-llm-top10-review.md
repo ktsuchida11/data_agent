@@ -307,7 +307,7 @@ uv run python -m data_agent.evals.factcheck --model all # 誤情報（作り話�
 
 - [src/data_agent/safety/limits.py](../../src/data_agent/safety/limits.py)、[src/data_agent/agent.py](../../src/data_agent/agent.py)、[src/data_agent/ui/app.py](../../src/data_agent/ui/app.py)
 - [tests/test_limits.py](../../tests/test_limits.py)、[tests/test_prompts.py](../../tests/test_prompts.py)、[tests/e2e/check_approvals.py](../../tests/e2e/check_approvals.py)
-- [src/data_agent/evals/redteam/](../../src/data_agent/evals/redteam/)（間接注入の点検）、[tests/test_redteam.py](../../tests/test_redteam.py)
+- [evals/redteam/](../../evals/redteam/)（間接注入の点検）、[tests/test_redteam.py](../../tests/test_redteam.py)
 - ADR-0012（ガードレール）、ADR-0016（コードの実行）、ADR-0017・0019（データベース）、ADR-0018（Web 検索）
 - ADR-0021（確認。LLM06 への対応）
 - OWASP Top 10 for LLM Applications 2025

@@ -29,7 +29,7 @@ from itertools import combinations
 from pathlib import Path
 from typing import Any
 
-from langchain_core.messages import HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from data_agent.safety.audit import audit
 
@@ -60,6 +60,14 @@ _POINTER = re.compile(
 # 計算を確かめる量の上限（大きな表で、照合が遅くならないように）
 _MAX_PAIR_VALUES = 60  # 2 つの値の和と差は、値がこの数までの列だけ
 _MAX_GROUPS = 50  # 行のまとめ（地域ごとなど）は、違う値がこの数までの列だけ
+
+
+def final_text(messages: list[Any]) -> str:
+    """最後の返事（文章のある、いちばん後ろのモデルの発言）。定時実行と点検が、照合と記録に使う。"""
+    for message in reversed(messages):
+        if isinstance(message, AIMessage) and (text := str(message.text)):
+            return text
+    return ""
 
 
 def normalize(text: str) -> str:

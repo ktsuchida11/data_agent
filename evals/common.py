@@ -313,14 +313,6 @@ def build(
 
 
 # ---------- 実行 ----------
-def final_text(messages: list[Any]) -> str:
-    """最後の返事（文章のある、いちばん後ろのモデルの発言）。"""
-    for message in reversed(messages):
-        if isinstance(message, AIMessage) and (text := str(message.text)):
-            return text
-    return ""
-
-
 def answer_actions(
     actions: Sequence[Mapping[str, Any]],
     entry: str,
@@ -472,6 +464,97 @@ ARGS_LIMIT = 2_000
 def clip(value: Any, limit: int) -> str:
     text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, default=str)
     return text if len(text) <= limit else text[:limit] + "…"
+
+
+def yes(value: bool) -> str:
+    return "はい" if value else "いいえ"
+
+
+def trace_record(trace: Any) -> dict[str, Any]:
+    """記録（Trace）のうち、2 つの点検で同じ欄。結果の JSON に入れる。"""
+    return {
+        "model_calls": trace.model_calls,
+        "models": dict(trace.models),
+        "tool_calls": [{"name": call.name, "args": clip(dict(call.args), ARGS_LIMIT)} for call in trace.tool_calls],
+        "approved": [call.name for call in trace.approved],
+        "rejected": [call.name for call in trace.rejected],
+        "searches": [clip(question, 300) for question in trace.searches],
+        "answer": clip(trace.answer, ANSWER_LIMIT),
+    }
+
+
+async def run_model(
+    args: argparse.Namespace,
+    items: Sequence[Any],
+    run_all: Callable[..., Awaitable[tuple[list[Any], bool]]],
+    status: Callable[[Any], str],
+    *,
+    model: str,
+    mode: str,
+    budget: float,
+) -> tuple[list[Any], bool, Meter]:
+    """モデルを 1 つ、すべての項目で測る。1 件終わるたびに「[ 3/12] <status>」と出す。結果・途中でやめたか・料金の記録を返す。"""
+    meter = Meter(budget=budget)
+    total = len(items) * args.trials
+    done = 0
+
+    def show(result: Any) -> None:
+        nonlocal done
+        done += 1
+        print(f"[{done:>3}/{total}] {status(result)}", flush=True)
+
+    print(f"\n----- {model} -----", flush=True)
+    results, stopped = await run_all(
+        items,
+        model=model,
+        mode=mode,
+        meter=meter,
+        trials=args.trials,
+        parallel=args.parallel,
+        timeout=args.timeout,
+        on_done=show,
+    )
+    return results, stopped, meter
+
+
+def report(
+    args: argparse.Namespace,
+    name: str,
+    noun: str,
+    *,
+    model: str,
+    mode: str,
+    meter: Meter,
+    stopped: bool,
+    text: str,
+    details: list[str],
+    results: list[Any],
+    record: Callable[[Any], dict[str, Any]],
+    **summary: Any,
+) -> None:
+    """結果の表と、根拠・ほかのモデル・使ったトークンの行を出し、logs/<name>/ に保存する。summary は、点検ごとの集計の欄。"""
+    lines = ["", text, *details]
+    if args.only:
+        lines += ["", f"（一部の{noun}だけを実行しました。全体の判定には、--only を付けずに実行してください）"]
+    lines += other_models(results, model)
+    lines += ["", "使ったトークン:", *usage_lines(meter)]
+    print("\n".join(lines))
+    save(
+        {
+            "date": datetime.now().isoformat(timespec="seconds"),
+            "model": model,
+            "fast_model": get_settings().fast_model,
+            "mode": mode,
+            "trials": args.trials,
+            "stopped_by_budget": stopped,
+            **summary,
+            "cost_usd": round(meter.cost, 4),
+            "tokens": meter.tokens,
+            "report": text,
+            "results": [record(result) for result in results],
+        },
+        name,
+    )
 
 
 def usage_lines(meter: Meter) -> list[str]:

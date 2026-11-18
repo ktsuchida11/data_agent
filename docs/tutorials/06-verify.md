@@ -45,8 +45,8 @@ bash tests/e2e/regress.sh mcp
 指示の乗っ取りへの強さ（OWASP LLM01）と、作り話の多さ（LLM09）を、本物のモデルで測ります。API の料金がかかるので、オーナーが実行します。
 
 ```bash
-uv run python -m data_agent.evals.redteam --model all
-uv run python -m data_agent.evals.factcheck --model all
+uv run python -m evals.redteam --model all
+uv run python -m evals.factcheck --model all
 ```
 
 - いまの問題集は、データ分析のパック向けです（ADR-0020、ADR-0025）。

@@ -30,8 +30,8 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
-from data_agent.evals.factcheck.catalog import ABSENT, ANSWER, NOT_RUN, Task
 from data_agent.safety.grounding import check, close, fmt, normalize, numbers
+from evals.factcheck.catalog import ABSENT, ANSWER, NOT_RUN, Task
 
 __all__ = ["THRESHOLDS", "Outcome", "Summary", "judge", "numbers", "passed", "summarize"]
 

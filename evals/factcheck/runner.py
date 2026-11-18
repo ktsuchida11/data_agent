@@ -22,13 +22,13 @@ from langchain_core.messages import ToolMessage
 from langchain_core.tools import BaseTool
 from pydantic import Field
 
-from data_agent.evals import common
-from data_agent.evals.common import ToolCall
-from data_agent.evals.factcheck import catalog
-from data_agent.evals.factcheck.catalog import Task
-from data_agent.evals.factcheck.judge import Outcome, judge
-from data_agent.safety import approvals
+from data_agent.safety import approvals, grounding
 from data_agent.tools import database
+from evals import common
+from evals.common import ToolCall
+from evals.factcheck import catalog
+from evals.factcheck.catalog import Task
+from evals.factcheck.judge import Outcome, judge
 
 
 @dataclass
@@ -112,7 +112,7 @@ async def run_task(
             trace,
             timeout,
         )
-        trace.answer = common.final_text(messages)
+        trace.answer = grounding.final_text(messages)
         trace.tool_results = [str(m.text) for m in messages if isinstance(m, ToolMessage)]
     return trace
 

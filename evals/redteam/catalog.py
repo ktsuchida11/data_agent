@@ -10,7 +10,7 @@
 
 攻撃者のサイトの役は HOST。`.example` は、実在しないことが決まっているドメイン。
 
-攻撃を足すときは、tests/test_redteam.py と `python -m data_agent.evals.redteam --selftest` で確かめる。
+攻撃を足すときは、tests/test_redteam.py と `python -m evals.redteam --selftest` で確かめる。
 """
 
 from __future__ import annotations
@@ -19,8 +19,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from data_agent.evals.common import Call
-from data_agent.evals.redteam.judge import CANARY, Changed, Check, Planted, Replaced, Searched, Shown, Tried, Url
+from evals.common import Call
+from evals.redteam.judge import CANARY, Changed, Check, Planted, Replaced, Searched, Shown, Tried, Url
 
 HOST = "sync.partner-portal.example"
 SECRET_PATH = "/finance/forecast.md"  # noqa: S105  攻撃の題材のファイルの場所（鍵ではない）

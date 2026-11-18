@@ -45,6 +45,7 @@ from langchain.agents import AgentState
 from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 
+from data_agent.safety import grounding
 from data_agent.safety.audit import audit
 
 if TYPE_CHECKING:  # 型の注記だけに使う（watch_terms.py は、このファイルの normalize を使うため）
@@ -67,7 +68,6 @@ _MAX_LOCAL_CHARS = 400_000  # 調べる手元のデータの量（新しいも�
 
 _SUMMARY_SOURCE = "summarization"  # Deep Agents の要約の印（HumanMessage の additional_kwargs の lc_source）
 # 桁区切りのカンマ（1,284,600）。CSV の区切り（1284600,231）とは区別する: 1〜3 桁のあとに、3 桁ずつ続くものだけ
-_THOUSANDS = re.compile(r"(?<!\d)(?<!\d,)\d{1,3}(?:,\d{3})+(?!\d)(?!,\d)")
 _TOKEN = re.compile(r"[0-9a-z][0-9a-z_\-.:/#@+]*")
 _TOKEN_EDGE = "._-:/#@+"  # noqa: S105  番号の区切りに使う記号（鍵ではない）
 _CODE = re.compile(r"(?<![0-9A-Za-z])[A-Z0-9]{2,}(?:[-_][A-Z0-9]{2,})+(?![0-9A-Za-z])")  # 大文字をつないだコード
@@ -104,10 +104,8 @@ class Hit:
 
 # ---------- 文字列をそろえる ----------
 def normalize(text: str) -> str:
-    """全角・半角、大文字・小文字、桁区切りのカンマ、空白の違いをそろえる。"""
-    folded = unicodedata.normalize("NFKC", text).lower()
-    folded = _THOUSANDS.sub(lambda m: m.group().replace(",", ""), folded)
-    return " ".join(folded.split())
+    """全角・半角、大文字・小文字、桁区切りのカンマ、空白の違いをそろえる（返事の照合の normalize に、大文字・小文字と空白を足したもの）。"""
+    return " ".join(grounding.normalize(text).lower().split())
 
 
 def normalize_lines(text: str) -> str:
@@ -115,7 +113,8 @@ def normalize_lines(text: str) -> str:
     return "\n".join(normalize(line) for line in text.splitlines())
 
 
-def _compact(text: str) -> str:
+def compact(text: str) -> str:
+    """空白をすべて取る（見張る言葉の一覧でも使う）。"""
     return "".join(text.split())
 
 
@@ -272,19 +271,19 @@ def _numbers_and_codes(question: str, q: str, u: str, sources: Sequence[tuple[st
 
 def _table_values(q: str, u: str, local: Sequence[tuple[str, str]]) -> list[Hit]:
     """表の値: 手元の表の値が、そのまま質問文にあるもの（利用者が書いたものは除く）。"""
-    uc = _compact(u)
+    uc = compact(u)
     return [
         _hit(LOCAL, piece, source)
         for source, text in local
         for piece in sorted(pieces(normalize_lines(text)), key=len, reverse=True)
-        if piece in q and piece not in u and _compact(piece) not in uc
+        if piece in q and piece not in u and compact(piece) not in uc
     ]
 
 
 def _long_passages(q: str, u: str, sources: Sequence[tuple[str, str]]) -> list[Hit]:
     """長い文: 手元のデータの文が、続けて質問文にあるもの（空白を除いて比べる。利用者が書いたものは除く）。"""
-    qc, uc = _compact(q), _compact(u)
-    compacts = [(source, _compact(text)) for source, text in sources]
+    qc, uc = compact(q), compact(u)
+    compacts = [(source, compact(text)) for source, text in sources]
     joined = "\x00".join(text for _, text in compacts)
     places = [i for i, char in enumerate(q) if not char.isspace()]  # 空白を除いた位置 → 質問文の中の位置
     hits: list[Hit] = []
@@ -308,10 +307,10 @@ def _distinct(hits: list[Hit]) -> list[Hit]:
     """同じものを2回出さない。ほかの見つかったものの一部でしかないものも、出さない（長いほうを残す）。"""
     kept: list[Hit] = []
     for hit in hits:
-        key = _compact(hit.text)
-        if any(key == _compact(other.text) for other in kept):
+        key = compact(hit.text)
+        if any(key == compact(other.text) for other in kept):
             continue
-        if any(key != _compact(other.text) and key in _compact(other.text) for other in hits):
+        if any(key != compact(other.text) and key in compact(other.text) for other in hits):
             continue
         kept.append(hit)
     return kept

@@ -27,6 +27,7 @@ from collections.abc import Awaitable, Callable, Iterable
 from typing import Any
 
 from starlette.datastructures import MutableHeaders
+from starlette.responses import PlainTextResponse
 
 Scope = dict[str, Any]
 Receive = Callable[[], Awaitable[dict[str, Any]]]
@@ -93,14 +94,7 @@ class ConnectionGuard:
                 # 受け入れる前に閉じると、サーバー（uvicorn）は HTTP の 403 を返して、接続を作らない
                 await send({"type": "websocket.close", "code": _POLICY_VIOLATION})
             else:
-                await send(
-                    {
-                        "type": "http.response.start",
-                        "status": 403,
-                        "headers": [(b"content-type", b"text/plain; charset=utf-8")],
-                    }
-                )
-                await send({"type": "http.response.body", "body": REJECTED_BODY})
+                await PlainTextResponse(REJECTED_BODY, status_code=403)(scope, receive, send)
             return
         if kind == "http" and is_https(scope):
 

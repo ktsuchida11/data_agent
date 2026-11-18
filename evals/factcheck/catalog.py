@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from data_agent.evals.common import Call
+from evals.common import Call
 
 ANSWER = "answer"
 ABSENT = "absent"

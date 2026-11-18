@@ -8,7 +8,7 @@
 #
 # - 対象は、手元の Langfuse と同じ PostgreSQL のコンテナにあるデータベース。
 #   ほかの場所のデータベース（AWS の RDS など）につなぐときは、このスクリプトは使わず、
-#   読み取り専用のロールを自分で作って、.env の DATA_DB_* に書く（README を参照）。
+#   読み取り専用のロールを自分で作って、.env の DATA_DB_* に書く（docs/usage.md を参照）。
 # - ロール coding_agent_reader を作り、指定したデータベースの表を「読むことだけ」許す。
 #   データの中身や、ほかのロールの権限は変えない。Langfuse のデータベース（postgres）には触らない。
 # - 個人情報の列は、config/hidden_columns.<名前>.txt に書くと、このロールから読めなくなる。

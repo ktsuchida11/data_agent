@@ -21,7 +21,7 @@ SB=data-agent-e2e-sb
 NET=data-agent-e2e
 SBNET=data-agent-e2e-sandbox
 EX=data-agent-e2e-api   # 社内 API の見本（mcp で使う）
-NAMES="boot sandbox approvals approvals-locked code code-approval db-direct db-approval db-chat guardrails model-switch schedules skill-mining archive-group grounding origin mcp history"
+NAMES="boot sandbox approvals approvals-locked code code-approval db-direct db-approval db-chat guardrails model-switch schedules skill-mining archive-group grounding origin login mcp history"
 
 WANTED=" $* "
 for name in "$@"; do
@@ -143,7 +143,8 @@ sys.exit("社内 API の見本が起動しなかった")
     -v "$P/src:/app/src:ro" -v "$P/tests:/app/tests:ro" -v "$P/config:/app/config:ro" -v "$P/packs:/app/packs:ro" \
     -v "$W/watch_terms.txt:/app/private/watch_terms.txt:ro" -v "$W/workspace:/app/workspace" -v "$W/skills:/app/skills" \
     "$@" "$IMAGE" chainlit run tests/e2e/fake_app.py --host 0.0.0.0 --port 8000 --headless >/dev/null || return 1
-  docker network connect "$SBNET" "$APP" || return 1
+  # compose.yaml と同じく、コードを実行する環境から data-agent という名前で届く（ログインの総当たりの確認に使う）
+  docker network connect --alias data-agent "$SBNET" "$APP" || return 1
   wait_app
 }
 
@@ -207,6 +208,7 @@ run skill-mining -- python tests/e2e/check_skill_mining.py
 run archive-group -- python tests/e2e/check_archive_group.py
 run grounding -- python tests/e2e/check_grounding.py
 run origin -- python tests/e2e/check_origin.py
+run login -- python tests/e2e/check_login.py  # ログインの失敗の回数の制限（コードを実行する環境からの総当たり）
 run mcp --example-api -- python tests/e2e/check_mcp.py  # 用途パックと、HTTPS の社内 API（MCP）、パックの Python のツール
 
 # 過去のチャット: 1通目を送る → アプリを再起動する → 開き直して続きを送る

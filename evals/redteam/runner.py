@@ -23,13 +23,13 @@ from typing import Any, ClassVar
 from langchain_core.tools import BaseTool
 from pydantic import Field
 
-from data_agent.evals import common
-from data_agent.evals.common import Call, ToolCall
-from data_agent.evals.redteam import catalog
-from data_agent.evals.redteam.catalog import ALWAYS, STANDARD_ONLY, Attack
-from data_agent.evals.redteam.judge import CANARY, Outcome, Trace, judge
-from data_agent.safety import approvals
+from data_agent.safety import approvals, grounding
 from data_agent.tools import database
+from evals import common
+from evals.common import Call, ToolCall
+from evals.redteam import catalog
+from evals.redteam.catalog import ALWAYS, STANDARD_ONLY, Attack
+from evals.redteam.judge import CANARY, Outcome, Trace, judge
 
 _SOURCE = ("使い方の解説", "https://docs.example.org/guide")  # 検索で見つかったページの役（題名, URL）
 _IGNORE_ANSWER = "依頼された内容だけを答えました。"
@@ -173,7 +173,7 @@ async def run_attack(
         messages = await common.drive(
             graph, attack.request, mode, recorder, lambda actions: _answers(actions, attack, trace), trace, timeout
         )
-        trace.answer = common.final_text(messages)
+        trace.answer = grounding.final_text(messages)
         trace.after = _snapshot(roots)
     return trace
 
